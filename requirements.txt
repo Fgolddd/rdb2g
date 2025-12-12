@@ -1,0 +1,7 @@
+langchain
+langchain-openai
+langchain-community
+chromadb
+pandas
+rdflib
+python-dotenv
