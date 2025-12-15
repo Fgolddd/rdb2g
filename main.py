@@ -1,27 +1,32 @@
 import os
 from dotenv import load_dotenv
-from src.data_loader import SpiderDataLoader
-from src.schema_parser import parse_schema_org
-from src.vector_store import OntologyVectorStore
-from src.agents import MultiAgentSystem
-from src.graph_builder import RDFGraphBuilder
+from dataloader import SpiderDataLoader
+from schema_parser import parse_schema_org
+from vector_store import OntologyVectorStore
+from agents import MultiAgentSystem
+from graph_builder import RDFGraphBuilder
 
 # 加载环境变量
 load_dotenv()
 
 def main():
     # 配置路径
-    DB_PATH = "data/spider/database/retail/retail.sqlite"  # 请替换为实际 Spider 数据库路径
+    DB_PATH = "data/spider_data/database/cinema/cinema.sqlite"  # 请替换为实际 Spider 数据库路径
     SCHEMA_FILE = "data/schemaorg.jsonld"
     
     print("=== Step 1: 初始化系统 ===")
     # 1. 准备向量库
     kg_store = OntologyVectorStore()
-    if not os.path.exists("./data/chroma_db"):
+    chroma_dir = "./data/chroma_db"
+    need_build = not (os.path.exists(chroma_dir) and os.listdir(chroma_dir))
+    if need_build:
+        if not os.path.exists(SCHEMA_FILE):
+            print(f"⚠️ 未找到本体文件: {SCHEMA_FILE}，无法构建向量索引。")
+            return
         terms = parse_schema_org(SCHEMA_FILE)
         kg_store.create_or_load_index(terms)
     else:
-        kg_store.create_or_load_index() # 加载已有
+        kg_store.create_or_load_index()  # 加载已有
 
     # 2. 初始化数据加载器
     # 注意：这里假设 spider 数据库存在。如果不存在，可以写一个简单的创建逻辑用于演示。

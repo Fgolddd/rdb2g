@@ -61,7 +61,7 @@ class SpiderDataLoader:
 # --- 单元测试模块 ---
 if __name__ == "__main__":
     # 直接使用已有的 .sqlite 文件进行测试，不再创建或插入示例数据
-    db_path = "./data/spider_data/battle_death/battle_death.sqlite"
+    db_path = "./data/spider_data/database/school_bus/school_bus.sqlite"
     if not os.path.exists(db_path):
         print(f"未找到数据库文件: {db_path}")
     else:
