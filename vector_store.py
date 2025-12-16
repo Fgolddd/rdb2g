@@ -1,5 +1,8 @@
 import os
-from langchain_community.vectorstores import Chroma
+# 优先使用新包 langchain-chroma，若未安装则回退到社区版
+
+from langchain_chroma import Chroma
+
 from langchain_core.documents import Document
 from openai import OpenAI
 

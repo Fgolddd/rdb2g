@@ -66,7 +66,8 @@ def main():
         # 2.3 添加到图谱构建器
         df = loader.get_dataframe(table)
         pk = relations.get("pk")
-        graph_builder.add_table_data(df, table, final_mapping, primary_key=pk)
+        fks = relations.get("fks", [])
+        graph_builder.add_table_data(df, table, final_mapping, primary_key=pk, foreign_keys=fks)
 
     loader.close()
 

@@ -1,0 +1,174 @@
+@prefix schema1: <http://schema.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/data/cinema/3> a schema1:Thing ;
+    schema1:capacity 364 ;
+    schema1:identifier 3 ;
+    schema1:location "County Dublin" ;
+    schema1:name "Dublin Array" ;
+    schema1:openingHoursSpecification 2015 .
+
+<http://example.org/data/cinema/4> a schema1:Thing ;
+    schema1:capacity 305 ;
+    schema1:identifier 4 ;
+    schema1:location "County Clare" ;
+    schema1:name "Glenmore" ;
+    schema1:openingHoursSpecification 2009 .
+
+<http://example.org/data/cinema/5> a schema1:Thing ;
+    schema1:capacity 325 ;
+    schema1:identifier 5 ;
+    schema1:location "County Tipperary" ;
+    schema1:name "Glenough" ;
+    schema1:openingHoursSpecification 2010 .
+
+<http://example.org/data/cinema/7> a schema1:Thing ;
+    schema1:capacity 203 ;
+    schema1:identifier 7 ;
+    schema1:location "County Tipperary" ;
+    schema1:name "Grouse Lodge" ;
+    schema1:openingHoursSpecification 2011 .
+
+<http://example.org/data/cinema/8> a schema1:Thing ;
+    schema1:capacity 225 ;
+    schema1:identifier 8 ;
+    schema1:location "County Clare" ;
+    schema1:name "Moneypoint" ;
+    schema1:openingHoursSpecification 2011 .
+
+<http://example.org/data/schedule/cinema_1-film_1> a schema1:Thing ;
+    schema1:attendee <http://example.org/data/film/1> ;
+    schema1:location <http://example.org/data/cinema/1> ;
+    schema1:name "cinema_1-film_1" ;
+    schema1:price 1.299e+01 ;
+    schema1:scheduleTime 5 ;
+    schema1:startDate "21 May" .
+
+<http://example.org/data/schedule/cinema_1-film_2> a schema1:Thing ;
+    schema1:attendee <http://example.org/data/film/2> ;
+    schema1:location <http://example.org/data/cinema/1> ;
+    schema1:name "cinema_1-film_2" ;
+    schema1:price 1.299e+01 ;
+    schema1:scheduleTime 3 ;
+    schema1:startDate "21 May" .
+
+<http://example.org/data/schedule/cinema_1-film_3> a schema1:Thing ;
+    schema1:attendee <http://example.org/data/film/3> ;
+    schema1:location <http://example.org/data/cinema/1> ;
+    schema1:name "cinema_1-film_3" ;
+    schema1:price 8.99e+00 ;
+    schema1:scheduleTime 2 ;
+    schema1:startDate "21 Jun" .
+
+<http://example.org/data/schedule/cinema_10-film_1> a schema1:Thing ;
+    schema1:attendee <http://example.org/data/film/1> ;
+    schema1:location <http://example.org/data/cinema/10> ;
+    schema1:name "cinema_10-film_1" ;
+    schema1:price 1.599e+01 ;
+    schema1:scheduleTime 5 ;
+    schema1:startDate "19 May" .
+
+<http://example.org/data/schedule/cinema_2-film_1> a schema1:Thing ;
+    schema1:attendee <http://example.org/data/film/1> ;
+    schema1:location <http://example.org/data/cinema/2> ;
+    schema1:name "cinema_2-film_1" ;
+    schema1:price 9.99e+00 ;
+    schema1:scheduleTime 5 ;
+    schema1:startDate "11 July" .
+
+<http://example.org/data/schedule/cinema_6-film_5> a schema1:Thing ;
+    schema1:attendee <http://example.org/data/film/5> ;
+    schema1:location <http://example.org/data/cinema/6> ;
+    schema1:name "cinema_6-film_5" ;
+    schema1:price 1.299e+01 ;
+    schema1:scheduleTime 4 ;
+    schema1:startDate "2 Aug" .
+
+<http://example.org/data/schedule/cinema_9-film_4> a schema1:Thing ;
+    schema1:attendee <http://example.org/data/film/4> ;
+    schema1:location <http://example.org/data/cinema/9> ;
+    schema1:name "cinema_9-film_4" ;
+    schema1:price 9.99e+00 ;
+    schema1:scheduleTime 5 ;
+    schema1:startDate "20 May" .
+
+<http://example.org/data/cinema/10> a schema1:Thing ;
+    schema1:capacity 330 ;
+    schema1:identifier 10 ;
+    schema1:location "County Louth" ;
+    schema1:name "Oriel" ;
+    schema1:openingHoursSpecification 2013 .
+
+<http://example.org/data/cinema/2> a schema1:Thing ;
+    schema1:capacity 368 ;
+    schema1:identifier 2 ;
+    schema1:location "County Cork" ;
+    schema1:name "Carrowleagh" ;
+    schema1:openingHoursSpecification 2012 .
+
+<http://example.org/data/cinema/6> a schema1:Thing ;
+    schema1:capacity 208 ;
+    schema1:identifier 6 ;
+    schema1:location "County Laois" ;
+    schema1:name "Gortahile" ;
+    schema1:openingHoursSpecification 2010 .
+
+<http://example.org/data/cinema/9> a schema1:Thing ;
+    schema1:capacity 908 ;
+    schema1:identifier 9 ;
+    schema1:location "County Clare" ;
+    schema1:name "Mount Callan" ;
+    schema1:openingHoursSpecification 2011 .
+
+<http://example.org/data/film/2> a schema1:Thing ;
+    schema1:datePublished "September 28–October 2, 1992" ;
+    schema1:director "Bill Schreiner" ;
+    schema1:episodeNumber 2,
+        27 ;
+    schema1:identifier 2,
+        "50231–50235" ;
+    schema1:name "The Case of the Smart Dummy" .
+
+<http://example.org/data/film/3> a schema1:Thing ;
+    schema1:datePublished "October 5–9, 1992" ;
+    schema1:director "Bill Schreiner" ;
+    schema1:episodeNumber 3,
+        28 ;
+    schema1:identifier 3,
+        "50011–50015" ;
+    schema1:name "The Case: Off the Record" .
+
+<http://example.org/data/film/4> a schema1:Thing ;
+    schema1:datePublished "October 12–16, 1992" ;
+    schema1:director "Jesus Salvador Treviño" ;
+    schema1:episodeNumber 4,
+        29 ;
+    schema1:identifier 4,
+        "50251–50255" ;
+    schema1:name "The Case of the Bermuda Triangle" .
+
+<http://example.org/data/film/5> a schema1:Thing ;
+    schema1:datePublished "October 19–23, 1992" ;
+    schema1:director "Bill Schreiner" ;
+    schema1:episodeNumber 5,
+        30 ;
+    schema1:identifier 5,
+        "50241–50245" ;
+    schema1:name "The Case of the Piggy Banker" .
+
+<http://example.org/data/cinema/1> a schema1:Thing ;
+    schema1:capacity 1100 ;
+    schema1:identifier 1 ;
+    schema1:location "County Wicklow" ;
+    schema1:name "Codling" ;
+    schema1:openingHoursSpecification 2010 .
+
+<http://example.org/data/film/1> a schema1:Thing ;
+    schema1:datePublished "September 21–25, 1992" ;
+    schema1:director "Bill Schreiner" ;
+    schema1:episodeNumber 1,
+        26 ;
+    schema1:identifier 1,
+        "50021–50025" ;
+    schema1:name "The Case of the Mystery Weekend" .
+
