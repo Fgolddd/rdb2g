@@ -75,6 +75,7 @@ Return ONLY a JSON object: {{ "column_name": "schema_uri" }}
         print("🤖 Relation Agent 正在工作...")
         system_prompt = (
             "Analyze the table structure to identify Primary Keys (PK) and likely Foreign Keys (FK). "
+            "A PK can be a single column or multiple columns (composite key). "
             "Return ONLY a minified JSON object."
         )
         user_content = f"""
@@ -82,9 +83,16 @@ Table Data:
 {json.dumps(table_fingerprint, ensure_ascii=False)}
 
 Rules:
-- FKs usually end in '_id' or match other table names (guess based on naming).
+1. The Primary Key (PK) is the MINIMAL set of columns required to uniquely identify a row. Do not include extra columns.
+2. Columns ending in '_id' are the strongest candidates for being part of a PK or FK.
+3. **CRITICAL RULE**: Descriptive columns (like names, titles), measurement columns (like price, duration, count), and especially **date/time columns (like 'Date') MUST NOT be part of the Primary Key**.
+4. If the PK is a single column, return its name as a string for the \"pk\" value.
+5. If the PK is a composite key (multiple columns), return a list of the column names for the \"pk\" value.
+6. If no clear PK is found, return null for the \"pk\" value.
 
-Return ONLY JSON: {{ "pk": "column_name", "fks": ["col1", "col2"] }}
+Return ONLY a minified JSON object.
+- Example with single PK: {{ \"pk\": \"some_id\", \"fks\": [\"col_a\", \"col_b\"] }}
+- Example with composite PK: {{ \"pk\": [\"part1_id\", \"part2_id\"], \"fks\": [\"col_c\"] }}
 """
         messages = [
             {"role": "system", "content": system_prompt},

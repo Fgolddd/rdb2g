@@ -21,7 +21,7 @@ class RDFGraphBuilder:
     def add_table_data(self, dataframe, table_name, mapping, primary_key=None, foreign_keys=None):
         """
         将 DataFrame 的每一行转换为 RDF 子图。
-        增强了 URI 的构建逻辑，并为 schedule 节点添加了 name 属性。
+        通用化 URI 构建，并增加了防御性代码以确保复合主键的正确性。
         """
         print(f"🔨 正在为表 '{table_name}' 生成图谱 (包含关系链接)...")
         
@@ -30,21 +30,29 @@ class RDFGraphBuilder:
         for _, row in dataframe.iterrows():
             # 1. 构建当前行的主语 URI
             entity_id = None
-            
-            if table_name == 'schedule':
+            is_composite = isinstance(primary_key, list) and len(primary_key) > 0
+
+            if is_composite:
                 try:
-                    cinema_id = row['Cinema_ID']
-                    film_id = row['Film_ID']
-                    if not pd.isna(cinema_id) and not pd.isna(film_id):
-                        entity_id = f"cinema_{int(cinema_id)}-film_{int(film_id)}"
+                    # --- 防御性代码：只选择结尾是 '_id' 的列来构建复合主键 --- #
+                    # 这可以忽略 Agent 可能错误返回的任何其他列（如 'Date'）
+                    pk_columns = [c for c in primary_key if c.lower().endswith('_id')]
+                    
+                    id_parts = [f"{col}_{row[col]}" for col in pk_columns if not pd.isna(row[col])]
+                    
+                    # 仅当所有预期的主键部分都存在时才创建复合 ID
+                    if len(id_parts) == len(pk_columns) and pk_columns:
+                        entity_id = "-".join(id_parts)
                 except KeyError:
                     pass
             
             if not entity_id:
-                if primary_key and primary_key in row and not pd.isna(row[primary_key]):
-                    entity_id = str(row[primary_key])
-                else:
-                    entity_id = f"row_{_}"
+                pk_col = primary_key if isinstance(primary_key, str) else None
+                if pk_col and pk_col in row and not pd.isna(row[pk_col]):
+                    entity_id = str(row[pk_col])
+            
+            if not entity_id:
+                entity_id = f"row_{_}"
             
             safe_entity_id = urllib.parse.quote(entity_id)
             subject_uri = URIRef(f"{self.base_uri}{table_name}/{safe_entity_id}")
@@ -52,9 +60,8 @@ class RDFGraphBuilder:
             # 2. 添加实体类型定义
             self.g.add((subject_uri, RDF.type, self.SCHEMA.Thing))
 
-            # --- 新增：为 schedule 节点添加 name 属性用于显示 ---
-            if table_name == 'schedule' and '-' in entity_id:
-                self.g.add((subject_uri, self.SCHEMA.name, Literal(entity_id)))
+            if is_composite and entity_id and "row_" not in entity_id:
+                 self.g.add((subject_uri, self.SCHEMA.name, Literal(entity_id)))
 
             # 3. 遍历所有列，添加属性三元组
             for col, val in row.items():
