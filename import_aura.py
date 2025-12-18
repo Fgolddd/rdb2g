@@ -1,54 +1,52 @@
 from rdflib_neo4j import Neo4jStoreConfig, Neo4jStore
 from rdflib import Graph
 import os
+import argparse
 
-# 推荐：从 .env 文件加载凭据，避免硬编码
+# --- 1. 设置命令行参数解析 ---
+parser = argparse.ArgumentParser(description="Import an RDF TTL file into Neo4j Aura.")
+parser.add_argument("ttl_file", type=str, help="Path to the .ttl file to import.")
+args = parser.parse_args()
+ttl_file_path = args.ttl_file
+
+# 推荐：从 .env 文件加载凭据
 # from dotenv import load_dotenv
 # load_dotenv()
 
 # 配置 Aura 连接信息
 auth_data = {
-    'uri': "neo4j+s://a1b9c584.databases.neo4j.io", # 你的 Aura URI
-    'database': "neo4j",
-    'user': "neo4j",
-    'pwd': "SpTPDLpQmXojFcQewQdLYQr4LwoSyFbZs0H3iXR8z_I"
+    'uri': os.getenv("NEO4J_URI", "neo4j+s://a1b9c584.databases.neo4j.io"),
+    'database': os.getenv("NEO4J_DATABASE", "neo4j"),
+    'user': os.getenv("NEO4J_USER", "neo4j"),
+    'pwd': os.getenv("NEO4J_PWD", "SpTPDLpQmXojFcQewQdLYQr4LwoSyFbZs0H3iXR8z_I")
 }
 
-# 检查凭据是否存在
 if not all(auth_data.values()):
     raise ValueError("Neo4j 连接信息不完整，请检查环境变量或代码中的硬编码值。")
 
 config = Neo4jStoreConfig(auth_data=auth_data)
-
-# 实例化连接到 Neo4j 的 Graph 对象
 graph = Graph(store=Neo4jStore(config=config))
 
-# --- 新的、更可靠的导入逻辑 ---
-# 1. 在内存中创建一个临时的 rdflib Graph 来解析本地文件
-print(f"正在从 'knowledge_graph.ttl' 解析三元组...")
-if not os.path.exists("knowledge_graph.ttl"):
-    print("错误：'knowledge_graph.ttl' 文件未找到。请先运行 main.py 生成图谱文件。")
+# --- 2. 使用从命令行获取的文件路径 ---
+print(f"准备从 '{ttl_file_path}' 解析三元组...")
+if not os.path.exists(ttl_file_path):
+    print(f"错误：文件 '{ttl_file_path}' 未找到。请检查文件路径是否正确。")
 else:
     local_g = Graph()
-    local_g.parse("knowledge_graph.ttl", format="turtle")
+    local_g.parse(ttl_file_path, format="turtle")
 
     print(f"解析完成，共找到 {len(local_g)} 个三元组。现在开始分批导入...")
 
-    # 2. 分批将三元组添加到 Neo4j graph 中并手动提交
-    batch_size = 100  # 每次提交 100 个三元组
+    batch_size = 100
     triples = list(local_g)
     imported_count = 0
 
     for i in range(0, len(triples), batch_size):
         batch = triples[i:i + batch_size]
-        
-        # 将一小批三元组添加到连接到 Neo4j 的 graph 对象中
         for triple in batch:
             graph.add(triple)
         
-        # 3. 关键步骤：手动提交事务
         try:
-            # 某些旧版本可能没有 commit 方法，这是一个兼容性尝试
             if hasattr(graph.store, 'commit') and callable(graph.store.commit):
                 graph.store.commit()
             imported_count += len(batch)

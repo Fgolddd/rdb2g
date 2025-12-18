@@ -44,24 +44,24 @@ class MultiAgentSystem:
         """Mapping Agent: 映射列到 Schema.org"""
         print("🤖 Mapping Agent 正在工作...")
         rag_context = self._get_rag_context(table_fingerprint)
-
+        
         system_prompt = (
             "You are an expert Semantic Mapping Agent. "
             "Return ONLY a minified JSON object mapping each column name to a Schema.org URI."
         )
         user_content = f"""
-Input Data (Table Fingerprint):
+        Input Data (Table Fingerprint):
 {json.dumps(table_fingerprint, ensure_ascii=False)}
 
-Ontology Knowledge (RAG Context):
-{rag_context}
+        Ontology Knowledge (RAG Context):
+        {rag_context}
 
-Instructions:
-1. Analyze the column name and sample values.
-2. Choose the best matching URI from Schema.org (use the RAG context).
+        Instructions:
+        1. Analyze the column name and sample values.
+        2. Choose the best matching URI from Schema.org (use the RAG context).
 3. If no good match exists, use null.
-
-Return ONLY a JSON object: {{ "column_name": "schema_uri" }}
+        
+        Return ONLY a JSON object: {{ "column_name": "schema_uri" }}
 """
         messages = [
             {"role": "system", "content": system_prompt},
@@ -112,11 +112,11 @@ Return ONLY a minified JSON object.
 Table: {table_fingerprint['table_name']}
 Proposed Mapping: {json.dumps(mapping, ensure_ascii=False)}
 Proposed Relations: {json.dumps(relations, ensure_ascii=False)}
-
-Rules:
-1. Ensure the URI is a valid Schema.org term.
-2. If a column is a Foreign Key, it should likely be mapped to an ObjectProperty (relationship), not a DataType property.
-
+        
+        Rules:
+        1. Ensure the URI is a valid Schema.org term.
+        2. If a column is a Foreign Key, it should likely be mapped to an ObjectProperty (relationship), not a DataType property.
+        
 Output ONLY the FINAL corrected JSON mapping.
 """
         messages = [

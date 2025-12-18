@@ -26,7 +26,7 @@ class RDFGraphBuilder:
         print(f"🔨 正在为表 '{table_name}' 生成图谱 (包含关系链接)...")
         
         fk_set = set(foreign_keys or [])
-
+        
         for _, row in dataframe.iterrows():
             # 1. 构建当前行的主语 URI
             entity_id = None
@@ -67,7 +67,7 @@ class RDFGraphBuilder:
             for col, val in row.items():
                 if pd.isna(val):
                     continue
-
+                
                 schema_term = mapping.get(col)
                 if not schema_term or schema_term.lower() == 'null':
                     continue

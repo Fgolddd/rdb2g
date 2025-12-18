@@ -1,4 +1,5 @@
 import os
+import argparse
 from dotenv import load_dotenv
 from dataloader import SpiderDataLoader
 from schema_parser import parse_schema_org
@@ -9,10 +10,10 @@ from graph_builder import RDFGraphBuilder
 # 加载环境变量
 load_dotenv()
 
-def main():
-    # 配置路径
-    DB_PATH = "data/spider_data/database/cinema/cinema.sqlite"  # 请替换为实际 Spider 数据库路径
-    SCHEMA_FILE = "data/schemaorg.jsonld"
+def main(db_path, schema_file):
+    # 配置路径现在通过函数参数传入
+    DB_PATH = db_path
+    SCHEMA_FILE = schema_file
     
     print("=== Step 1: 初始化系统 ===")
     # 1. 准备向量库
@@ -29,11 +30,10 @@ def main():
         kg_store.create_or_load_index()  # 加载已有
 
     # 2. 初始化数据加载器
-    # 注意：这里假设 spider 数据库存在。如果不存在，可以写一个简单的创建逻辑用于演示。
     try:
         loader = SpiderDataLoader(DB_PATH)
     except FileNotFoundError:
-        print("⚠️ 未找到数据库文件，跳过执行。请修改 DB_PATH。")
+        print(f"⚠️ 未找到数据库文件: {DB_PATH}，跳过执行。")
         return
 
     agent_system = MultiAgentSystem(kg_store)
@@ -47,23 +47,17 @@ def main():
     for table in tables:
         print(f"\n>>> 处理表: {table}")
         
-        # 2.1 生成指纹
         fingerprint = loader.generate_table_fingerprint(table)
         
-        # 2.2 运行智能体流水线
-        # A. 映射
         raw_mapping = agent_system.run_mapping_agent(fingerprint)
         print(f"   初次映射: {raw_mapping}")
         
-        # B. 关系
         relations = agent_system.run_relation_agent(fingerprint)
         print(f"   识别关系: {relations}")
         
-        # C. 验证 (创新点)
         final_mapping = agent_system.run_validator_agent(fingerprint, raw_mapping, relations)
         print(f"   最终映射: {final_mapping}")
 
-        # 2.3 添加到图谱构建器
         df = loader.get_dataframe(table)
         pk = relations.get("pk")
         fks = relations.get("fks", [])
@@ -72,7 +66,17 @@ def main():
     loader.close()
 
     print("\n=== Step 3: 导出知识图谱 ===")
-    graph_builder.save_graph("knowledge_graph.ttl")
+    db_filename = os.path.basename(DB_PATH)
+    ttl_filename = os.path.splitext(db_filename)[0] + ".ttl"
+    output_path = os.path.join("data", "ttl", ttl_filename)
+    graph_builder.save_graph(output_path)
 
 if __name__ == "__main__":
-    main()
+    # --- 设置命令行参数解析 ---
+    parser = argparse.ArgumentParser(description="Generate a Knowledge Graph from a SQLite database and a Schema.org ontology.")
+    parser.add_argument("db_path", type=str, help="Path to the input SQLite database file.")
+    parser.add_argument("schema_file", type=str, help="Path to the Schema.org JSON-LD file.")
+    args = parser.parse_args()
+
+    # 使用从命令行解析的参数调用 main 函数
+    main(args.db_path, args.schema_file)
