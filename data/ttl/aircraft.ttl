@@ -2,155 +2,154 @@
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 <http://example.org/data/aircraft/4> a schema1:Thing ;
-    schema1:area "8,495 ft² (789 m²)" ;
     schema1:description "Heavy-lift helicopter" ;
+    schema1:floorSize "8,495 ft² (789 m²)" ;
     schema1:identifier 4 ;
     schema1:name "Mil Mi-26" ;
-    schema1:value "14.5 lb/ft² (71 kg/m²)" ;
+    schema1:roofLoad "14.5 lb/ft² (71 kg/m²)" ;
     schema1:weight "123,500 lb (56,000 kg)" .
 
 <http://example.org/data/airport/10> a schema1:Thing ;
     schema1:aircraftMovementCount 9.3038e+04 ;
+    schema1:cargoWeight 2.61507e+05 ;
     schema1:domesticPassengerVolume 7.46094e+05 ;
-    schema1:freightVolume 2.61507e+05 ;
     schema1:identifier 10 ;
     schema1:internationalPassengerVolume 4.870184e+06 ;
     schema1:name "East Midlands" ;
     schema1:numberOfPassengers 5.620673e+06 ;
+    schema1:percentChange "3.8%" ;
     schema1:transitPassengerVolume 4.395e+03 .
 
 <http://example.org/data/airport/3> a schema1:Thing ;
     schema1:aircraftMovementCount 1.93282e+05 ;
+    schema1:cargoWeight 1.97738e+05 ;
     schema1:domesticPassengerVolume 2.343428e+06 ;
-    schema1:freightVolume 1.97738e+05 ;
     schema1:identifier 3 ;
     schema1:internationalPassengerVolume 1.999695e+07 ;
     schema1:name "London Stansted" ;
     schema1:numberOfPassengers 2.236036e+07 ;
+    schema1:percentChange "6.0%" ;
     schema1:transitPassengerVolume 1.9989e+04 .
 
 <http://example.org/data/airport/4> a schema1:Thing ;
     schema1:aircraftMovementCount 2.0461e+05 ;
+    schema1:cargoWeight 1.41781e+05 ;
     schema1:domesticPassengerVolume 2.943719e+06 ;
-    schema1:freightVolume 1.41781e+05 ;
     schema1:identifier 4 ;
     schema1:internationalPassengerVolume 1.811923e+07 ;
     schema1:name "Manchester" ;
     schema1:numberOfPassengers 2.12192e+07 ;
+    schema1:percentChange "4.0%" ;
     schema1:transitPassengerVolume 1.56246e+05 .
 
 <http://example.org/data/airport/5> a schema1:Thing ;
     schema1:aircraftMovementCount 1.17859e+05 ;
+    schema1:cargoWeight 4.0518e+04 ;
     schema1:domesticPassengerVolume 1.320678e+06 ;
-    schema1:freightVolume 4.0518e+04 ;
     schema1:identifier 5 ;
     schema1:internationalPassengerVolume 8.853224e+06 ;
     schema1:name "London Luton" ;
     schema1:numberOfPassengers 1.018073e+07 ;
+    schema1:percentChange "2.6%" ;
     schema1:transitPassengerVolume 6.832e+03 .
 
 <http://example.org/data/airport/7> a schema1:Thing ;
     schema1:aircraftMovementCount 1.2555e+05 ;
+    schema1:cargoWeight 1.2418e+04 ;
     schema1:domesticPassengerVolume 5.281038e+06 ;
-    schema1:freightVolume 1.2418e+04 ;
     schema1:identifier 7 ;
     schema1:internationalPassengerVolume 3.71114e+06 ;
     schema1:name "Edinburgh" ;
     schema1:numberOfPassengers 9.006702e+06 ;
+    schema1:percentChange "0.5%" ;
     schema1:transitPassengerVolume 1.4524e+04 .
 
 <http://example.org/data/airport/8> a schema1:Thing ;
     schema1:aircraftMovementCount 1.00087e+05 ;
+    schema1:cargoWeight 3.546e+03 ;
     schema1:domesticPassengerVolume 4.192121e+06 ;
-    schema1:freightVolume 3.546e+03 ;
     schema1:identifier 8 ;
     schema1:internationalPassengerVolume 3.943139e+06 ;
     schema1:name "Glasgow International" ;
     schema1:numberOfPassengers 8.178891e+06 ;
+    schema1:percentChange "7.0%" ;
     schema1:transitPassengerVolume 4.3631e+04 .
 
-<http://example.org/data/airport_aircraft/row_0> a schema1:Thing ;
+<http://example.org/data/airport_aircraft/1> a schema1:Thing ;
     schema1:identifier 1 ;
-    schema1:location <http://example.org/data/airport/6> ;
+    schema1:servesAirport <http://example.org/data/airport/6> ;
     schema1:vehicle <http://example.org/data/aircraft/5> .
 
-<http://example.org/data/airport_aircraft/row_1> a schema1:Thing ;
+<http://example.org/data/airport_aircraft/2> a schema1:Thing ;
     schema1:identifier 2 ;
-    schema1:location <http://example.org/data/airport/2> ;
+    schema1:servesAirport <http://example.org/data/airport/2> ;
     schema1:vehicle <http://example.org/data/aircraft/1> .
 
-<http://example.org/data/airport_aircraft/row_2> a schema1:Thing ;
+<http://example.org/data/airport_aircraft/3> a schema1:Thing ;
     schema1:identifier 3 ;
-    schema1:location <http://example.org/data/airport/1> ;
+    schema1:servesAirport <http://example.org/data/airport/1> ;
     schema1:vehicle <http://example.org/data/aircraft/2> .
 
-<http://example.org/data/airport_aircraft/row_3> a schema1:Thing ;
+<http://example.org/data/airport_aircraft/4> a schema1:Thing ;
     schema1:identifier 4 ;
-    schema1:location <http://example.org/data/airport/9> ;
+    schema1:servesAirport <http://example.org/data/airport/9> ;
     schema1:vehicle <http://example.org/data/aircraft/3> .
 
-<http://example.org/data/match/1.0> a schema1:Thing ;
-    schema1:athlete <http://example.org/data/winning_pilot/1>,
-        "Hannes Arch" ;
-    schema1:country "United Arab Emirates" ;
-    schema1:dateCreated "March 26–27" ;
-    schema1:episodeNumber 1e+00 ;
-    schema1:location "Mina' Zayid , Abu Dhabi" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/1> .
+<http://example.org/data/match/row_0> a schema1:Thing ;
+    schema1:Country "United Arab Emirates" ;
+    schema1:award <http://example.org/data/winning_aircraft/1> ;
+    schema1:speed "Hannes Arch" ;
+    schema1:sportsActivityLocation "Mina' Zayid , Abu Dhabi" ;
+    schema1:startDate "March 26–27" ;
+    schema1:winner <http://example.org/data/winning_pilot/1> .
 
-<http://example.org/data/match/2.0> a schema1:Thing ;
-    schema1:athlete <http://example.org/data/winning_pilot/4>,
-        "Paul Bonhomme" ;
-    schema1:country "Australia" ;
-    schema1:dateCreated "April 17–18" ;
-    schema1:episodeNumber 2e+00 ;
-    schema1:location "Swan River , Perth" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/1> .
+<http://example.org/data/match/row_1> a schema1:Thing ;
+    schema1:Country "Australia" ;
+    schema1:award <http://example.org/data/winning_aircraft/1> ;
+    schema1:speed "Paul Bonhomme" ;
+    schema1:sportsActivityLocation "Swan River , Perth" ;
+    schema1:startDate "April 17–18" ;
+    schema1:winner <http://example.org/data/winning_pilot/4> .
 
-<http://example.org/data/match/3.0> a schema1:Thing ;
-    schema1:athlete <http://example.org/data/winning_pilot/6>,
-        "Hannes Arch" ;
-    schema1:country "Brazil" ;
-    schema1:dateCreated "May 8–9" ;
-    schema1:episodeNumber 3e+00 ;
-    schema1:location "Flamengo Beach , Rio de Janeiro" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/2> .
+<http://example.org/data/match/row_2> a schema1:Thing ;
+    schema1:Country "Brazil" ;
+    schema1:award <http://example.org/data/winning_aircraft/2> ;
+    schema1:speed "Hannes Arch" ;
+    schema1:sportsActivityLocation "Flamengo Beach , Rio de Janeiro" ;
+    schema1:startDate "May 8–9" ;
+    schema1:winner <http://example.org/data/winning_pilot/6> .
 
-<http://example.org/data/match/4.0> a schema1:Thing ;
-    schema1:athlete <http://example.org/data/winning_pilot/4>,
-        "Nigel Lamb" ;
-    schema1:country "Canada" ;
-    schema1:dateCreated "June 5–6" ;
-    schema1:episodeNumber 4e+00 ;
-    schema1:location "Windsor , Ontario" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/4> .
+<http://example.org/data/match/row_3> a schema1:Thing ;
+    schema1:Country "Canada" ;
+    schema1:award <http://example.org/data/winning_aircraft/4> ;
+    schema1:speed "Nigel Lamb" ;
+    schema1:sportsActivityLocation "Windsor , Ontario" ;
+    schema1:startDate "June 5–6" ;
+    schema1:winner <http://example.org/data/winning_pilot/4> .
 
-<http://example.org/data/match/5.0> a schema1:Thing ;
-    schema1:athlete <http://example.org/data/winning_pilot/9>,
-        "Hannes Arch" ;
-    schema1:country "United States" ;
-    schema1:dateCreated "June 19–20" ;
-    schema1:episodeNumber 5e+00 ;
-    schema1:location "New York City" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/3> .
+<http://example.org/data/match/row_4> a schema1:Thing ;
+    schema1:Country "United States" ;
+    schema1:award <http://example.org/data/winning_aircraft/3> ;
+    schema1:speed "Hannes Arch" ;
+    schema1:sportsActivityLocation "New York City" ;
+    schema1:startDate "June 19–20" ;
+    schema1:winner <http://example.org/data/winning_pilot/9> .
 
-<http://example.org/data/match/6.0> a schema1:Thing ;
-    schema1:athlete <http://example.org/data/winning_pilot/2>,
-        "Paul Bonhomme" ;
-    schema1:country "Germany" ;
-    schema1:dateCreated "August 7–8" ;
-    schema1:episodeNumber 6e+00 ;
-    schema1:location "EuroSpeedway Lausitz" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/4> .
+<http://example.org/data/match/row_5> a schema1:Thing ;
+    schema1:Country "Germany" ;
+    schema1:award <http://example.org/data/winning_aircraft/4> ;
+    schema1:speed "Paul Bonhomme" ;
+    schema1:sportsActivityLocation "EuroSpeedway Lausitz" ;
+    schema1:startDate "August 7–8" ;
+    schema1:winner <http://example.org/data/winning_pilot/2> .
 
-<http://example.org/data/match/7.0> a schema1:Thing ;
-    schema1:athlete <http://example.org/data/winning_pilot/6>,
-        "Cancelled" ;
-    schema1:country "Hungary" ;
-    schema1:dateCreated "Cancelled" ;
-    schema1:episodeNumber 7e+00 ;
-    schema1:location "River Danube , Budapest" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/5> .
+<http://example.org/data/match/row_6> a schema1:Thing ;
+    schema1:Country "Hungary" ;
+    schema1:award <http://example.org/data/winning_aircraft/5> ;
+    schema1:speed "Cancelled" ;
+    schema1:sportsActivityLocation "River Danube , Budapest" ;
+    schema1:startDate "Cancelled" ;
+    schema1:winner <http://example.org/data/winning_pilot/6> .
 
 <http://example.org/data/pilot/1> a schema1:Thing ;
     schema1:age 23 ;
@@ -213,74 +212,78 @@
     schema1:name "Della Lindgren" .
 
 <http://example.org/data/aircraft/1> a schema1:Thing ;
-    schema1:area "497 ft² (46.2 m²)" ;
     schema1:description "Light utility helicopter" ;
+    schema1:floorSize "497 ft² (46.2 m²)" ;
     schema1:identifier 1 ;
     schema1:name "Robinson R-22" ;
-    schema1:value "2.6 lb/ft² (14 kg/m²)" ;
+    schema1:roofLoad "2.6 lb/ft² (14 kg/m²)" ;
     schema1:weight "1,370 lb (635 kg)" .
 
 <http://example.org/data/aircraft/2> a schema1:Thing ;
-    schema1:area "872 ft² (81.1 m²)" ;
     schema1:description "Turboshaft utility helicopter" ;
+    schema1:floorSize "872 ft² (81.1 m²)" ;
     schema1:identifier 2 ;
     schema1:name "Bell 206B3 JetRanger" ;
-    schema1:value "3.7 lb/ft² (18 kg/m²)" ;
+    schema1:roofLoad "3.7 lb/ft² (18 kg/m²)" ;
     schema1:weight "3,200 lb (1,451 kg)" .
 
 <http://example.org/data/aircraft/3> a schema1:Thing ;
-    schema1:area "5,655 ft² (526 m²)" ;
     schema1:description "Tandem rotor helicopter" ;
+    schema1:floorSize "5,655 ft² (526 m²)" ;
     schema1:identifier 3 ;
     schema1:name "CH-47D Chinook" ;
-    schema1:value "8.8 lb/ft² (43 kg/m²)" ;
+    schema1:roofLoad "8.8 lb/ft² (43 kg/m²)" ;
     schema1:weight "50,000 lb (22,680 kg)" .
 
 <http://example.org/data/aircraft/5> a schema1:Thing ;
-    schema1:area "4,900 ft² (460 m²)" ;
     schema1:description "Heavy-lift helicopter" ;
+    schema1:floorSize "4,900 ft² (460 m²)" ;
     schema1:identifier 5 ;
     schema1:name "CH-53E Super Stallion" ;
-    schema1:value "15 lb/ft² (72 kg/m²)" ;
+    schema1:roofLoad "15 lb/ft² (72 kg/m²)" ;
     schema1:weight "73,500 lb (33,300 kg)" .
 
 <http://example.org/data/airport/1> a schema1:Thing ;
     schema1:aircraftMovementCount 4.78693e+05 ;
+    schema1:cargoWeight 1.397054e+06 ;
     schema1:domesticPassengerVolume 5.562516e+06 ;
-    schema1:freightVolume 1.397054e+06 ;
     schema1:identifier 1 ;
     schema1:internationalPassengerVolume 6.134444e+07 ;
     schema1:name "London Heathrow" ;
     schema1:numberOfPassengers 6.705474e+07 ;
+    schema1:percentChange "1.5%" ;
     schema1:transitPassengerVolume 1.47791e+05 .
 
 <http://example.org/data/airport/2> a schema1:Thing ;
     schema1:aircraftMovementCount 2.63653e+05 ;
+    schema1:cargoWeight 1.07702e+05 ;
     schema1:domesticPassengerVolume 3.730963e+06 ;
-    schema1:freightVolume 1.07702e+05 ;
     schema1:identifier 2 ;
     schema1:internationalPassengerVolume 3.043105e+07 ;
     schema1:name "London Gatwick" ;
     schema1:numberOfPassengers 3.420589e+07 ;
+    schema1:percentChange "2.9%" ;
     schema1:transitPassengerVolume 4.3873e+04 .
 
 <http://example.org/data/airport/6> a schema1:Thing ;
     schema1:aircraftMovementCount 1.12227e+05 ;
+    schema1:cargoWeight 1.2192e+04 ;
     schema1:domesticPassengerVolume 1.471538e+06 ;
-    schema1:freightVolume 1.2192e+04 ;
     schema1:identifier 6 ;
     schema1:internationalPassengerVolume 8.105162e+06 ;
     schema1:name "Birmingham Airport" ;
     schema1:numberOfPassengers 9.627589e+06 ;
+    schema1:percentChange "4.3%" ;
     schema1:transitPassengerVolume 5.0889e+04 .
 
 <http://example.org/data/airport/9> a schema1:Thing ;
     schema1:aircraftMovementCount 7.6517e+04 ;
+    schema1:cargoWeight 3e+00 ;
     schema1:domesticPassengerVolume 1.171605e+06 ;
-    schema1:freightVolume 3e+00 ;
     schema1:identifier 9 ;
     schema1:internationalPassengerVolume 5.057051e+06 ;
     schema1:name "Bristol" ;
     schema1:numberOfPassengers 6.267114e+06 ;
+    schema1:percentChange "5.7%" ;
     schema1:transitPassengerVolume 3.8458e+04 .
 

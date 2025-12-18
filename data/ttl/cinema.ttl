@@ -2,173 +2,163 @@
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 <http://example.org/data/cinema/3> a schema1:Thing ;
-    schema1:capacity 364 ;
-    schema1:identifier 3 ;
     schema1:location "County Dublin" ;
     schema1:name "Dublin Array" ;
-    schema1:startDate 2015 .
+    schema1:seatingCapacity 364 ;
+    schema1:yearBuilt 2015 .
 
 <http://example.org/data/cinema/4> a schema1:Thing ;
-    schema1:capacity 305 ;
-    schema1:identifier 4 ;
     schema1:location "County Clare" ;
     schema1:name "Glenmore" ;
-    schema1:startDate 2009 .
+    schema1:seatingCapacity 305 ;
+    schema1:yearBuilt 2009 .
 
 <http://example.org/data/cinema/5> a schema1:Thing ;
-    schema1:capacity 325 ;
-    schema1:identifier 5 ;
     schema1:location "County Tipperary" ;
     schema1:name "Glenough" ;
-    schema1:startDate 2010 .
+    schema1:seatingCapacity 325 ;
+    schema1:yearBuilt 2010 .
 
 <http://example.org/data/cinema/7> a schema1:Thing ;
-    schema1:capacity 203 ;
-    schema1:identifier 7 ;
     schema1:location "County Tipperary" ;
     schema1:name "Grouse Lodge" ;
-    schema1:startDate 2011 .
+    schema1:seatingCapacity 203 ;
+    schema1:yearBuilt 2011 .
 
 <http://example.org/data/cinema/8> a schema1:Thing ;
-    schema1:capacity 225 ;
-    schema1:identifier 8 ;
     schema1:location "County Clare" ;
     schema1:name "Moneypoint" ;
-    schema1:startDate 2011 .
+    schema1:seatingCapacity 225 ;
+    schema1:yearBuilt 2011 .
 
 <http://example.org/data/schedule/Cinema_ID_1-Film_ID_1> a schema1:Thing ;
-    schema1:movie <http://example.org/data/film/1> ;
+    schema1:about <http://example.org/data/film/1> ;
+    schema1:location <http://example.org/data/cinema/1> ;
     schema1:name "Cinema_ID_1-Film_ID_1" ;
-    schema1:numberOfEpisodes 5 ;
-    schema1:price 1.299e+01 ;
-    schema1:startDate "21 May" ;
-    schema1:theater <http://example.org/data/cinema/1> .
+    schema1:offers 1.299e+01 ;
+    schema1:scheduledTime 5 ;
+    schema1:startDate "21 May" .
 
 <http://example.org/data/schedule/Cinema_ID_1-Film_ID_2> a schema1:Thing ;
-    schema1:movie <http://example.org/data/film/2> ;
+    schema1:about <http://example.org/data/film/2> ;
+    schema1:location <http://example.org/data/cinema/1> ;
     schema1:name "Cinema_ID_1-Film_ID_2" ;
-    schema1:numberOfEpisodes 3 ;
-    schema1:price 1.299e+01 ;
-    schema1:startDate "21 May" ;
-    schema1:theater <http://example.org/data/cinema/1> .
+    schema1:offers 1.299e+01 ;
+    schema1:scheduledTime 3 ;
+    schema1:startDate "21 May" .
 
 <http://example.org/data/schedule/Cinema_ID_1-Film_ID_3> a schema1:Thing ;
-    schema1:movie <http://example.org/data/film/3> ;
+    schema1:about <http://example.org/data/film/3> ;
+    schema1:location <http://example.org/data/cinema/1> ;
     schema1:name "Cinema_ID_1-Film_ID_3" ;
-    schema1:numberOfEpisodes 2 ;
-    schema1:price 8.99e+00 ;
-    schema1:startDate "21 Jun" ;
-    schema1:theater <http://example.org/data/cinema/1> .
+    schema1:offers 8.99e+00 ;
+    schema1:scheduledTime 2 ;
+    schema1:startDate "21 Jun" .
 
 <http://example.org/data/schedule/Cinema_ID_10-Film_ID_1> a schema1:Thing ;
-    schema1:movie <http://example.org/data/film/1> ;
+    schema1:about <http://example.org/data/film/1> ;
+    schema1:location <http://example.org/data/cinema/10> ;
     schema1:name "Cinema_ID_10-Film_ID_1" ;
-    schema1:numberOfEpisodes 5 ;
-    schema1:price 1.599e+01 ;
-    schema1:startDate "19 May" ;
-    schema1:theater <http://example.org/data/cinema/10> .
+    schema1:offers 1.599e+01 ;
+    schema1:scheduledTime 5 ;
+    schema1:startDate "19 May" .
 
 <http://example.org/data/schedule/Cinema_ID_2-Film_ID_1> a schema1:Thing ;
-    schema1:movie <http://example.org/data/film/1> ;
+    schema1:about <http://example.org/data/film/1> ;
+    schema1:location <http://example.org/data/cinema/2> ;
     schema1:name "Cinema_ID_2-Film_ID_1" ;
-    schema1:numberOfEpisodes 5 ;
-    schema1:price 9.99e+00 ;
-    schema1:startDate "11 July" ;
-    schema1:theater <http://example.org/data/cinema/2> .
+    schema1:offers 9.99e+00 ;
+    schema1:scheduledTime 5 ;
+    schema1:startDate "11 July" .
 
 <http://example.org/data/schedule/Cinema_ID_6-Film_ID_5> a schema1:Thing ;
-    schema1:movie <http://example.org/data/film/5> ;
+    schema1:about <http://example.org/data/film/5> ;
+    schema1:location <http://example.org/data/cinema/6> ;
     schema1:name "Cinema_ID_6-Film_ID_5" ;
-    schema1:numberOfEpisodes 4 ;
-    schema1:price 1.299e+01 ;
-    schema1:startDate "2 Aug" ;
-    schema1:theater <http://example.org/data/cinema/6> .
+    schema1:offers 1.299e+01 ;
+    schema1:scheduledTime 4 ;
+    schema1:startDate "2 Aug" .
 
 <http://example.org/data/schedule/Cinema_ID_9-Film_ID_4> a schema1:Thing ;
-    schema1:movie <http://example.org/data/film/4> ;
+    schema1:about <http://example.org/data/film/4> ;
+    schema1:location <http://example.org/data/cinema/9> ;
     schema1:name "Cinema_ID_9-Film_ID_4" ;
-    schema1:numberOfEpisodes 5 ;
-    schema1:price 9.99e+00 ;
-    schema1:startDate "20 May" ;
-    schema1:theater <http://example.org/data/cinema/9> .
+    schema1:offers 9.99e+00 ;
+    schema1:scheduledTime 5 ;
+    schema1:startDate "20 May" .
 
 <http://example.org/data/cinema/10> a schema1:Thing ;
-    schema1:capacity 330 ;
-    schema1:identifier 10 ;
     schema1:location "County Louth" ;
     schema1:name "Oriel" ;
-    schema1:startDate 2013 .
+    schema1:seatingCapacity 330 ;
+    schema1:yearBuilt 2013 .
 
 <http://example.org/data/cinema/2> a schema1:Thing ;
-    schema1:capacity 368 ;
-    schema1:identifier 2 ;
     schema1:location "County Cork" ;
     schema1:name "Carrowleagh" ;
-    schema1:startDate 2012 .
+    schema1:seatingCapacity 368 ;
+    schema1:yearBuilt 2012 .
 
 <http://example.org/data/cinema/6> a schema1:Thing ;
-    schema1:capacity 208 ;
-    schema1:identifier 6 ;
     schema1:location "County Laois" ;
     schema1:name "Gortahile" ;
-    schema1:startDate 2010 .
+    schema1:seatingCapacity 208 ;
+    schema1:yearBuilt 2010 .
 
 <http://example.org/data/cinema/9> a schema1:Thing ;
-    schema1:capacity 908 ;
-    schema1:identifier 9 ;
     schema1:location "County Clare" ;
     schema1:name "Mount Callan" ;
-    schema1:startDate 2011 .
+    schema1:seatingCapacity 908 ;
+    schema1:yearBuilt 2011 .
 
 <http://example.org/data/film/2> a schema1:Thing ;
     schema1:datePublished "September 28–October 2, 1992" ;
-    schema1:director <http://example.org/data/directed_by/Bill%20Schreiner> ;
+    schema1:director "Bill Schreiner" ;
     schema1:episodeNumber 2 ;
-    schema1:identifier 2,
-        "50231–50235" ;
+    schema1:identifier 2 ;
     schema1:name "The Case of the Smart Dummy" ;
-    schema1:position 27 .
+    schema1:position 27 ;
+    schema1:productionID "50231–50235" .
 
 <http://example.org/data/film/3> a schema1:Thing ;
     schema1:datePublished "October 5–9, 1992" ;
-    schema1:director <http://example.org/data/directed_by/Bill%20Schreiner> ;
+    schema1:director "Bill Schreiner" ;
     schema1:episodeNumber 3 ;
-    schema1:identifier 3,
-        "50011–50015" ;
+    schema1:identifier 3 ;
     schema1:name "The Case: Off the Record" ;
-    schema1:position 28 .
+    schema1:position 28 ;
+    schema1:productionID "50011–50015" .
 
 <http://example.org/data/film/4> a schema1:Thing ;
     schema1:datePublished "October 12–16, 1992" ;
-    schema1:director <http://example.org/data/directed_by/Jesus%20Salvador%20Trevi%C3%B1o> ;
+    schema1:director "Jesus Salvador Treviño" ;
     schema1:episodeNumber 4 ;
-    schema1:identifier 4,
-        "50251–50255" ;
+    schema1:identifier 4 ;
     schema1:name "The Case of the Bermuda Triangle" ;
-    schema1:position 29 .
+    schema1:position 29 ;
+    schema1:productionID "50251–50255" .
 
 <http://example.org/data/film/5> a schema1:Thing ;
     schema1:datePublished "October 19–23, 1992" ;
-    schema1:director <http://example.org/data/directed_by/Bill%20Schreiner> ;
+    schema1:director "Bill Schreiner" ;
     schema1:episodeNumber 5 ;
-    schema1:identifier 5,
-        "50241–50245" ;
+    schema1:identifier 5 ;
     schema1:name "The Case of the Piggy Banker" ;
-    schema1:position 30 .
+    schema1:position 30 ;
+    schema1:productionID "50241–50245" .
 
 <http://example.org/data/cinema/1> a schema1:Thing ;
-    schema1:capacity 1100 ;
-    schema1:identifier 1 ;
     schema1:location "County Wicklow" ;
     schema1:name "Codling" ;
-    schema1:startDate 2010 .
+    schema1:seatingCapacity 1100 ;
+    schema1:yearBuilt 2010 .
 
 <http://example.org/data/film/1> a schema1:Thing ;
     schema1:datePublished "September 21–25, 1992" ;
-    schema1:director <http://example.org/data/directed_by/Bill%20Schreiner> ;
+    schema1:director "Bill Schreiner" ;
     schema1:episodeNumber 1 ;
-    schema1:identifier 1,
-        "50021–50025" ;
+    schema1:identifier 1 ;
     schema1:name "The Case of the Mystery Weekend" ;
-    schema1:position 26 .
+    schema1:position 26 ;
+    schema1:productionID "50021–50025" .
 
