@@ -58,22 +58,4 @@ class SpiderDataLoader:
     def close(self):
         self.conn.close()
 
-# --- 单元测试模块 ---
-if __name__ == "__main__":
-    # 直接使用已有的 .sqlite 文件进行测试，不再创建或插入示例数据
-    db_path = "./data/spider_data/database/school_bus/school_bus.sqlite"
-    if not os.path.exists(db_path):
-        print(f"未找到数据库文件: {db_path}")
-    else:
-        loader = SpiderDataLoader(db_path)
-        try:
-            tables = loader.get_all_table_names()
-            print("Tables:", tables)
-            if tables:
-                first_table = tables[1]
-                fp = loader.generate_table_fingerprint(first_table)
-                print("Fingerprint:", json.dumps(fp, indent=2, ensure_ascii=False))
-            else:
-                print("数据库中未发现任何用户表。")
-        finally:
-            loader.close()
+

@@ -1,2 +1,7 @@
 venv/
 data/spider_data/
+data/database/
+__pycache__/
+
+/data/chroma_db/*
+!/data/chroma_db/chroma.sqlite3
