@@ -1,7 +1,15 @@
-venv/
-data/spider_data/
 data/database/
-__pycache__/
 
-/data/chroma_db/*
-!/data/chroma_db/chroma.sqlite3
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local environment
+.env
+.venv/
+
+# Local Factory workspace files
+.factory/
+
+# Vector store generated artifacts
+data/chroma_db/

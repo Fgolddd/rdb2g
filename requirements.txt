@@ -5,3 +5,4 @@ chromadb
 pandas
 rdflib
 python-dotenv
+langchain-chroma

@@ -38,24 +38,30 @@ class QwenEmbeddings:
 
 
 class OntologyVectorStore:
-    def __init__(self, persist_dir="./data/chroma_db"):
+    def __init__(self, persist_dir="./data/chroma_db", enable_retrieval=True):
         self.persist_dir = persist_dir
+        self.enable_retrieval = enable_retrieval
         # 使用通义千问（DashScope 兼容接口）作为向量嵌入
         self.embedding_fn = QwenEmbeddings()
         self.vector_db = None
 
     def create_or_load_index(self, schema_terms=None):
         """如果本地存在索引则加载，否则新建"""
+        if not self.enable_retrieval:
+            print("未启用检索增强，跳过向量索引初始化。")
+            self.vector_db = None
+            return
+
         if os.path.exists(self.persist_dir) and os.listdir(self.persist_dir):
             print("加载本地向量索引...")
             self.vector_db = Chroma(persist_directory=self.persist_dir, embedding_function=self.embedding_fn)
         else:
             if not schema_terms:
-                raise ValueError("本地索引不存在，且未提供 schema_terms 用于构建！")
+                raise ValueError("本地索引不存在，且未提供术语数据用于构建！")
             print("构建新向量索引...")
             docs = []
             for term in schema_terms:
-                # 构造富语义文本：把 Schema.org 术语的核心字段拼接为文档
+                # 构造富语义文本：把术语核心字段拼接为文档
                 content = (f"Term: {term['label']}\nType: {term['type']}\n"
                            f"Desc: {term['comment']}\nDomain: {term['domain']}\nRange: {term['range']}")
                 docs.append(Document(page_content=content, metadata={"uri": term['uri']}))
@@ -66,5 +72,5 @@ class OntologyVectorStore:
     def search(self, query, k=5):
         """语义检索"""
         if self.vector_db is None:
-            raise ValueError("Vector DB not initialized!")
+            return []
         return self.vector_db.similarity_search(query, k=k)
