@@ -2,7 +2,7 @@ import os
 import argparse
 from dotenv import load_dotenv
 from dataloader import SpiderDataLoader
-from schema_parser import parse_schema_org
+from schema_parser import parse_schema_org, parse_private_kb
 from vector_store import OntologyVectorStore
 from agents import MultiAgentSystem
 from graph_builder import RDFGraphBuilder
@@ -10,24 +10,49 @@ from graph_builder import RDFGraphBuilder
 # 加载环境变量
 load_dotenv()
 
-def main(db_path, schema_file):
+def _build_index_dir(source_file, prefix):
+    filename = os.path.splitext(os.path.basename(source_file))[0]
+    safe_name = "".join(ch if ch.isalnum() or ch in ('_', '-') else '_' for ch in filename)
+    return os.path.join("data", "chroma_db", f"{prefix}_{safe_name}")
+
+
+def _init_vector_store(kb_file=None, schema_file=None):
+    """初始化向量库：私域知识库优先，其次兼容 schema.org，最后可无知识库模式"""
+    if kb_file:
+        if not os.path.exists(kb_file):
+            raise FileNotFoundError(f"⚠️ 未找到私域知识库文件: {kb_file}")
+        terms = parse_private_kb(kb_file)
+        persist_dir = _build_index_dir(kb_file, "private")
+        store = OntologyVectorStore(persist_dir=persist_dir, enable_retrieval=True)
+        store.create_or_load_index(terms)
+        return store
+
+    if schema_file:
+        if not os.path.exists(schema_file):
+            raise FileNotFoundError(f"⚠️ 未找到本体文件: {schema_file}")
+        terms = parse_schema_org(schema_file)
+        persist_dir = _build_index_dir(schema_file, "schema")
+        store = OntologyVectorStore(persist_dir=persist_dir, enable_retrieval=True)
+        store.create_or_load_index(terms)
+        return store
+
+    # 无知识库：完全依赖模型能力
+    store = OntologyVectorStore(enable_retrieval=False)
+    store.create_or_load_index()
+    return store
+
+
+def main(db_path, kb_file=None, schema_file=None, allow_public_uri=False):
     # 配置路径现在通过函数参数传入
     DB_PATH = db_path
-    SCHEMA_FILE = schema_file
     
     print("=== Step 1: 初始化系统 ===")
-    # 1. 准备向量库
-    kg_store = OntologyVectorStore()
-    chroma_dir = "./data/chroma_db"
-    need_build = not (os.path.exists(chroma_dir) and os.listdir(chroma_dir))
-    if need_build:
-        if not os.path.exists(SCHEMA_FILE):
-            print(f"⚠️ 未找到本体文件: {SCHEMA_FILE}，无法构建向量索引。")
-            return
-        terms = parse_schema_org(SCHEMA_FILE)
-        kg_store.create_or_load_index(terms)
-    else:
-        kg_store.create_or_load_index()  # 加载已有
+    # 1. 准备向量库（私域知识库 > schema.org > 无知识库）
+    try:
+        kg_store = _init_vector_store(kb_file=kb_file, schema_file=schema_file)
+    except FileNotFoundError as e:
+        print(str(e))
+        return
 
     # 2. 初始化数据加载器
     try:
@@ -36,7 +61,7 @@ def main(db_path, schema_file):
         print(f"⚠️ 未找到数据库文件: {DB_PATH}，跳过执行。")
         return
 
-    agent_system = MultiAgentSystem(kg_store)
+    agent_system = MultiAgentSystem(kg_store, allow_public_uri=allow_public_uri)
     graph_builder = RDFGraphBuilder()
 
     # 获取所有表
@@ -73,10 +98,12 @@ def main(db_path, schema_file):
 
 if __name__ == "__main__":
     # --- 设置命令行参数解析 ---
-    parser = argparse.ArgumentParser(description="Generate a Knowledge Graph from a SQLite database and a Schema.org ontology.")
+    parser = argparse.ArgumentParser(description="Generate a Knowledge Graph from a SQLite database with optional knowledge retrieval.")
     parser.add_argument("db_path", type=str, help="Path to the input SQLite database file.")
-    parser.add_argument("schema_file", type=str, help="Path to the Schema.org JSON-LD file.")
+    parser.add_argument("--kb-file", type=str, default=None, help="Path to the private knowledge base JSON file.")
+    parser.add_argument("--schema-file", type=str, default=None, help="Optional path to a Schema.org JSON-LD file (backward compatibility).")
+    parser.add_argument("--allow-public-uri", action="store_true", help="Allow public ontology URIs in no-knowledge mode.")
     args = parser.parse_args()
 
     # 使用从命令行解析的参数调用 main 函数
-    main(args.db_path, args.schema_file)
+    main(args.db_path, kb_file=args.kb_file, schema_file=args.schema_file, allow_public_uri=args.allow_public_uri)

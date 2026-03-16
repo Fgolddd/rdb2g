@@ -20,6 +20,35 @@ class SpiderDataLoader:
         tables = [row[0] for row in cursor.fetchall()]
         return [t for t in tables if t != 'sqlite_sequence']
 
+    def get_table_constraints(self, table_name):
+        """获取表的显式主键/外键约束信息"""
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"PRAGMA table_info(`{table_name}`)")
+        table_info = cursor.fetchall()
+        pk_cols = [(row[5], row[1]) for row in table_info if row[5] > 0]
+        explicit_pk = [name for _, name in sorted(pk_cols, key=lambda x: x[0])]
+
+        cursor.execute(f"PRAGMA foreign_key_list(`{table_name}`)")
+        fk_rows = cursor.fetchall()
+        fk_details = []
+        explicit_fks = []
+        for row in fk_rows:
+            fk_col = row[3]
+            fk_details.append({
+                "column": fk_col,
+                "ref_table": row[2],
+                "ref_column": row[4],
+            })
+            if fk_col not in explicit_fks:
+                explicit_fks.append(fk_col)
+
+        return {
+            "explicit_pk": explicit_pk,
+            "explicit_fks": explicit_fks,
+            "explicit_fk_details": fk_details,
+        }
+
     def generate_table_fingerprint(self, table_name, k_samples=5):
         """生成表的语义指纹：包含列名、类型、统计信息和样本数据"""
         try:
@@ -43,11 +72,19 @@ class SpiderDataLoader:
             stats["samples"] = sample_values
             column_infos.append(stats)
 
+        all_tables = self.get_all_table_names()
+        constraints = self.get_table_constraints(table_name)
+
         fingerprint = {
             "source": os.path.basename(self.db_path),
             "table_name": table_name,
             "row_count": len(df),
-            "columns": column_infos
+            "columns": column_infos,
+            "table_count": len(all_tables),
+            "all_tables": all_tables,
+            "explicit_pk": constraints["explicit_pk"],
+            "explicit_fks": constraints["explicit_fks"],
+            "explicit_fk_details": constraints["explicit_fk_details"],
         }
         return fingerprint
 
