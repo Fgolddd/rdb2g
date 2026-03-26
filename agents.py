@@ -151,8 +151,15 @@ class MultiAgentSystem:
         table_data = table_fingerprint
         for col in table_data.get('columns', []):
             # 检索与 列名+样本 相关的术语
-            samples = ", ".join(col.get('samples', [])[:3])
-            query = f"Column: {col['name']}, Samples: {samples}"
+            raw_samples = col.get('samples', [])[:3]
+            clipped_samples = []
+            for s in raw_samples:
+                s = str(s).strip()
+                if len(s) > 120:
+                    s = s[:120] + "..."
+                clipped_samples.append(s)
+            samples = ", ".join(clipped_samples)
+            query = f"Column: {col['name']}, Samples: {samples}"[:500]
             results = self.vector_store.search(query, k=3)
 
             # --- Debug: 打印检索结果 ---
