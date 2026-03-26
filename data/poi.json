@@ -1,0 +1,206 @@
+{
+  "schema": "unified_knowledge_entry_v1",
+  "domain": "zs_POI_dm",
+  "terms": [
+    {
+      "uri": "zs_POI_dm.gid",
+      "type": "IdentifierProperty",
+      "label": "主键ID",
+      "comment": "记录主键，自增唯一标识。",
+      "domain": "zs_POI_dm",
+      "range": "integer"
+    },
+    {
+      "uri": "zs_POI_dm.geom",
+      "type": "GeoProperty",
+      "label": "空间点位",
+      "comment": "地理空间坐标点（Point, SRID 4490）。",
+      "domain": "zs_POI_dm",
+      "range": "geometry(Point,EPSG:4490)"
+    },
+    {
+      "uri": "zs_POI_dm.GUID",
+      "type": "DataProperty",
+      "label": "系统标识码",
+      "comment": "系统唯一标识码。",
+      "domain": "zs_POI_dm",
+      "range": "string(36)"
+    },
+    {
+      "uri": "zs_POI_dm.MC",
+      "type": "DataProperty",
+      "label": "名称",
+      "comment": "POI 名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(255)"
+    },
+    {
+      "uri": "zs_POI_dm.DZ",
+      "type": "DataProperty",
+      "label": "地址",
+      "comment": "POI 地址。",
+      "domain": "zs_POI_dm",
+      "range": "string(255)"
+    },
+    {
+      "uri": "zs_POI_dm.DLMC",
+      "type": "DataProperty",
+      "label": "大类名称",
+      "comment": "POI 大类名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(15)"
+    },
+    {
+      "uri": "zs_POI_dm.ZLMC",
+      "type": "DataProperty",
+      "label": "中类名称",
+      "comment": "POI 中类名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(15)"
+    },
+    {
+      "uri": "zs_POI_dm.XLMC",
+      "type": "DataProperty",
+      "label": "小类名称",
+      "comment": "POI 小类名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(100)"
+    },
+    {
+      "uri": "zs_POI_dm.SJMC",
+      "type": "DataProperty",
+      "label": "省级名称",
+      "comment": "所属省级行政区名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(20)"
+    },
+    {
+      "uri": "zs_POI_dm.SSJMC",
+      "type": "DataProperty",
+      "label": "市级名称",
+      "comment": "所属市级行政区名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(20)"
+    },
+    {
+      "uri": "zs_POI_dm.QXMC",
+      "type": "DataProperty",
+      "label": "区县级名称",
+      "comment": "所属区县级行政区名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(20)"
+    },
+    {
+      "uri": "zs_POI_dm.LXFS",
+      "type": "DataProperty",
+      "label": "联系方式",
+      "comment": "联系号码或其他联系方式。",
+      "domain": "zs_POI_dm",
+      "range": "string(100)"
+    },
+    {
+      "uri": "zs_POI_dm.BZ_GUID",
+      "type": "DataProperty",
+      "label": "对应标准地址实体_标识码",
+      "comment": "关联标准地址实体的标识码。",
+      "domain": "zs_POI_dm",
+      "range": "string(36)"
+    },
+    {
+      "uri": "zs_POI_dm.BZDZMC",
+      "type": "DataProperty",
+      "label": "对应标准地址实体_地址名称",
+      "comment": "关联标准地址实体的地址名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(255)"
+    },
+    {
+      "uri": "zs_POI_dm.ZDGACM",
+      "type": "DataProperty",
+      "label": "所属最低一级公安组织机构_名称",
+      "comment": "所属最低一级公安组织机构名称。",
+      "domain": "zs_POI_dm",
+      "range": "string(20)"
+    },
+    {
+      "uri": "zs_POI_dm.ZDGADM",
+      "type": "DataProperty",
+      "label": "所属最低一级公安组织机构_代码",
+      "comment": "所属最低一级公安组织机构代码。",
+      "domain": "zs_POI_dm",
+      "range": "string(36)"
+    },
+    {
+      "uri": "zs_POI_dm.SYZT",
+      "type": "DataProperty",
+      "label": "使用状态代码",
+      "comment": "使用状态代码(1使用中、2停用)。",
+      "domain": "zs_POI_dm",
+      "range": "string(2)"
+    },
+    {
+      "uri": "zs_POI_dm.SLSJ",
+      "type": "DataProperty",
+      "label": "设立时间",
+      "comment": "记录设立时间。",
+      "domain": "zs_POI_dm",
+      "range": "datetime"
+    },
+    {
+      "uri": "zs_POI_dm.QYSJ",
+      "type": "DataProperty",
+      "label": "启用时间",
+      "comment": "记录启用时间。",
+      "domain": "zs_POI_dm",
+      "range": "datetime"
+    },
+    {
+      "uri": "zs_POI_dm.TYSJ",
+      "type": "DataProperty",
+      "label": "停用时间",
+      "comment": "记录停用时间。",
+      "domain": "zs_POI_dm",
+      "range": "datetime"
+    },
+    {
+      "uri": "zs_POI_dm.GXSJ",
+      "type": "DataProperty",
+      "label": "更新时间",
+      "comment": "记录最后更新时间。",
+      "domain": "zs_POI_dm",
+      "range": "datetime"
+    },
+    {
+      "uri": "zs_POI_dm.DZLX",
+      "type": "DataProperty",
+      "label": "地址使用类型",
+      "comment": "地址使用类型(01住宅、02工业厂)。",
+      "domain": "zs_POI_dm",
+      "range": "string(2)"
+    },
+    {
+      "uri": "zs_POI_dm.ing_2000",
+      "type": "DataProperty",
+      "label": "经度_2000",
+      "comment": "经度坐标（2000 坐标系）。",
+      "domain": "zs_POI_dm",
+      "range": "double"
+    },
+    {
+      "uri": "zs_POI_dm.lat_2000",
+      "type": "DataProperty",
+      "label": "纬度_2000",
+      "comment": "纬度坐标（2000 坐标系）。",
+      "domain": "zs_POI_dm",
+      "range": "double"
+    },
+    {
+      "uri": "zs_POI_dm.BZ",
+      "type": "DataProperty",
+      "label": "备注",
+      "comment": "备注信息。",
+      "domain": "zs_POI_dm",
+      "range": "string(255)"
+    }
+  ]
+}
