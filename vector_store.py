@@ -13,25 +13,37 @@ class QwenEmbeddings:
     """
     def __init__(self, model: str | None = None, api_key: str | None = None, base_url: str | None = None):
         self.model = model or os.getenv("QWEN_EMBEDDING_MODEL")
+        # DashScope embedding 接口对单条输入长度有限制（报错信息为 1~8192）
+        # 这里采用保守字符上限，避免超长文本触发 400 InvalidParameter。
+        self.max_input_chars = int(os.getenv("QWEN_EMBEDDING_MAX_CHARS", "4000"))
         self.client = OpenAI(
             api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
             base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         )
 
+    def _sanitize_text(self, text: str | None, fallback: str) -> str:
+        text = "" if text is None else str(text)
+        text = text.strip()
+        if not text:
+            text = fallback
+        if len(text) > self.max_input_chars:
+            text = text[:self.max_input_chars]
+        return text
+
     def embed_query(self, text: str):
-        if text is None:
-            return []
-        resp = self.client.embeddings.create(model=self.model, input=text)
+        cleaned = self._sanitize_text(text, fallback="[empty query]")
+        resp = self.client.embeddings.create(model=self.model, input=cleaned)
         return resp.data[0].embedding
 
     def embed_documents(self, texts: list[str]):
         if not texts:
             return []
+        cleaned_texts = [self._sanitize_text(t, fallback="[empty document]") for t in texts]
         # DashScope 兼容接口限制每次最多 10 条输入，需做分批
         max_batch = int(os.getenv("QWEN_EMBEDDING_BATCH_SIZE", "10"))
         results = []
-        for i in range(0, len(texts), max_batch):
-            batch = texts[i:i+max_batch]
+        for i in range(0, len(cleaned_texts), max_batch):
+            batch = cleaned_texts[i:i+max_batch]
             resp = self.client.embeddings.create(model=self.model, input=batch)
             results.extend([item.embedding for item in resp.data])
         return results
