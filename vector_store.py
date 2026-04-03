@@ -1,4 +1,8 @@
 import os
+import re
+import json
+import shutil
+import hashlib
 # 优先使用新包 langchain-chroma，若未安装则回退到社区版
 
 from langchain_chroma import Chroma
@@ -56,6 +60,94 @@ class OntologyVectorStore:
         # 使用通义千问（DashScope 兼容接口）作为向量嵌入
         self.embedding_fn = QwenEmbeddings()
         self.vector_db = None
+        self.meta_file = "_index_meta.json"
+        self.index_schema_version = 3
+
+    def _compute_terms_hash(self, schema_terms):
+        if not schema_terms:
+            return None
+        stable_text = json.dumps(schema_terms, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(stable_text.encode("utf-8")).hexdigest()
+
+    def _meta_path(self):
+        return os.path.join(self.persist_dir, self.meta_file)
+
+    def _load_index_meta(self):
+        path = self._meta_path()
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    def _save_index_meta(self, terms_hash, doc_count):
+        os.makedirs(self.persist_dir, exist_ok=True)
+        path = self._meta_path()
+        payload = {
+            "terms_hash": terms_hash,
+            "doc_count": int(doc_count),
+            "schema_version": self.index_schema_version,
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    def _reset_persist_dir(self):
+        if os.path.exists(self.persist_dir):
+            shutil.rmtree(self.persist_dir)
+        os.makedirs(self.persist_dir, exist_ok=True)
+
+    def _extract_term_metadata(self, term):
+        uri = str(term.get("uri", "")).strip()
+        domain = str(term.get("domain", "")).strip()
+        label = str(term.get("label", "")).strip()
+        term_type = str(term.get("type", "")).strip()
+        range_val = str(term.get("range", "")).strip()
+        comment = str(term.get("comment", "")).strip()
+
+        column_code = ""
+        if "." in uri:
+            _, column_code = uri.rsplit(".", 1)
+        else:
+            fallback = re.sub(r"^.*[/#]", "", uri)
+            column_code = fallback
+
+        return {
+            "uri": uri,
+            "domain": domain,
+            "column_code": column_code,
+            "label": label,
+            "type": term_type,
+            "range": range_val,
+            "comment": comment,
+        }
+
+    def _build_document_content(self, term, meta):
+        chunk = {
+            "uri": meta["uri"],
+            "type": meta["type"],
+            "label": meta["label"],
+            "comment": meta["comment"],
+            "domain": meta["domain"],
+            "range": meta["range"],
+        }
+        return json.dumps(chunk, ensure_ascii=False)
+
+    def _merge_results(self, batches, k):
+        merged = []
+        seen = set()
+        for batch in batches:
+            for doc in batch:
+                uri = (doc.metadata or {}).get("uri")
+                key = uri or id(doc)
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(doc)
+                if len(merged) >= k:
+                    return merged
+        return merged
 
     def create_or_load_index(self, schema_terms=None):
         """如果本地存在索引则加载，否则新建"""
@@ -64,25 +156,86 @@ class OntologyVectorStore:
             self.vector_db = None
             return
 
-        if os.path.exists(self.persist_dir) and os.listdir(self.persist_dir):
+        current_terms_hash = self._compute_terms_hash(schema_terms)
+        has_local_index = os.path.exists(self.persist_dir) and os.listdir(self.persist_dir)
+        index_meta = self._load_index_meta()
+        needs_rebuild = False
+
+        if has_local_index and schema_terms:
+            if not index_meta:
+                needs_rebuild = True
+            elif index_meta.get("terms_hash") != current_terms_hash:
+                needs_rebuild = True
+            elif int(index_meta.get("schema_version", 0) or 0) != self.index_schema_version:
+                needs_rebuild = True
+
+        if has_local_index and not needs_rebuild:
             print("加载本地向量索引...")
             self.vector_db = Chroma(persist_directory=self.persist_dir, embedding_function=self.embedding_fn)
-        else:
-            if not schema_terms:
-                raise ValueError("本地索引不存在，且未提供术语数据用于构建！")
-            print("构建新向量索引...")
-            docs = []
-            for term in schema_terms:
-                # 构造富语义文本：把术语核心字段拼接为文档
-                content = (f"Term: {term['label']}\nType: {term['type']}\n"
-                           f"Desc: {term['comment']}\nDomain: {term['domain']}\nRange: {term['range']}")
-                docs.append(Document(page_content=content, metadata={"uri": term['uri']}))
-            
-            self.vector_db = Chroma.from_documents(docs, self.embedding_fn, persist_directory=self.persist_dir)
-            print("索引构建完成并已保存。")
+            return
 
-    def search(self, query, k=5):
-        """语义检索"""
+        if not schema_terms:
+            raise ValueError("本地索引不存在（或需重建），且未提供术语数据用于构建！")
+
+        if needs_rebuild:
+            print("检测到知识库内容变化，重建向量索引...")
+            self._reset_persist_dir()
+        else:
+            print("构建新向量索引...")
+
+        docs = []
+        for term in schema_terms:
+            meta = self._extract_term_metadata(term)
+            content = self._build_document_content(term, meta)
+            docs.append(Document(page_content=content, metadata=meta))
+
+        self.vector_db = Chroma.from_documents(docs, self.embedding_fn, persist_directory=self.persist_dir)
+        self._save_index_meta(current_terms_hash, len(docs))
+        print("索引构建完成并已保存。")
+
+    def search(self, query, k=5, domain=None, column_code=None):
+        """语义检索（优先精确列名/域过滤，再回退全局检索）"""
         if self.vector_db is None:
             return []
-        return self.vector_db.similarity_search(query, k=k)
+
+        candidate_batches = []
+        fetch_k = max(int(k), 3)
+
+        if domain and column_code:
+            try:
+                candidate_batches.append(
+                    self.vector_db.similarity_search(
+                        query,
+                        k=fetch_k,
+                        filter={"domain": str(domain), "column_code": str(column_code)},
+                    )
+                )
+            except Exception:
+                pass
+
+        if column_code:
+            try:
+                candidate_batches.append(
+                    self.vector_db.similarity_search(
+                        query,
+                        k=fetch_k,
+                        filter={"column_code": str(column_code)},
+                    )
+                )
+            except Exception:
+                pass
+
+        if domain:
+            try:
+                candidate_batches.append(
+                    self.vector_db.similarity_search(
+                        query,
+                        k=max(fetch_k, 5),
+                        filter={"domain": str(domain)},
+                    )
+                )
+            except Exception:
+                pass
+
+        candidate_batches.append(self.vector_db.similarity_search(query, k=max(fetch_k, 8)))
+        return self._merge_results(candidate_batches, int(k))
