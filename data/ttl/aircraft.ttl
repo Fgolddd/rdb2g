@@ -1,276 +1,354 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix schema1: <http://schema.org/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-<http://example.org/data/aircraft/4> a schema1:Thing ;
-    schema1:description "Heavy-lift helicopter" ;
-    schema1:identifier 4 ;
-    schema1:name "Mil Mi-26" ;
-    schema1:weight "123,500 lb (56,000 kg)" .
-
 <http://example.org/data/airport/10> a schema1:Thing ;
-    schema1:action 9.3038e+04 ;
-    schema1:identifier 10 ;
-    schema1:name "East Midlands" ;
-    schema1:occupancy 4.395e+03,
+    schema1:Airport 10,
+        4.395e+03,
+        9.3038e+04,
+        2.61507e+05,
         7.46094e+05,
-        4.870184e+06,
-        5.620673e+06 ;
-    schema1:weight 2.61507e+05 .
+        5.620673e+06,
+        "3.8%" ;
+    schema1:icaoCode 4.870184e+06,
+        "East Midlands" .
 
 <http://example.org/data/airport/3> a schema1:Thing ;
-    schema1:action 1.93282e+05 ;
-    schema1:identifier 3 ;
-    schema1:name "London Stansted" ;
-    schema1:occupancy 1.9989e+04,
+    schema1:Airport 3,
+        1.9989e+04,
+        1.93282e+05,
+        1.97738e+05,
         2.343428e+06,
-        1.999695e+07,
-        2.236036e+07 ;
-    schema1:weight 1.97738e+05 .
+        2.236036e+07,
+        "6.0%" ;
+    schema1:icaoCode 1.999695e+07,
+        "London Stansted" .
 
 <http://example.org/data/airport/4> a schema1:Thing ;
-    schema1:action 2.0461e+05 ;
-    schema1:identifier 4 ;
-    schema1:name "Manchester" ;
-    schema1:occupancy 1.56246e+05,
+    schema1:Airport 4,
+        1.41781e+05,
+        1.56246e+05,
+        2.0461e+05,
         2.943719e+06,
-        1.811923e+07,
-        2.12192e+07 ;
-    schema1:weight 1.41781e+05 .
+        2.12192e+07,
+        "4.0%" ;
+    schema1:icaoCode 1.811923e+07,
+        "Manchester" .
 
 <http://example.org/data/airport/5> a schema1:Thing ;
-    schema1:action 1.17859e+05 ;
-    schema1:identifier 5 ;
-    schema1:name "London Luton" ;
-    schema1:occupancy 6.832e+03,
+    schema1:Airport 5,
+        6.832e+03,
+        4.0518e+04,
+        1.17859e+05,
         1.320678e+06,
-        8.853224e+06,
-        1.018073e+07 ;
-    schema1:weight 4.0518e+04 .
+        1.018073e+07,
+        "2.6%" ;
+    schema1:icaoCode 8.853224e+06,
+        "London Luton" .
 
 <http://example.org/data/airport/7> a schema1:Thing ;
-    schema1:action 1.2555e+05 ;
-    schema1:identifier 7 ;
-    schema1:name "Edinburgh" ;
-    schema1:occupancy 1.4524e+04,
-        3.71114e+06,
+    schema1:Airport 7,
+        1.2418e+04,
+        1.4524e+04,
+        1.2555e+05,
         5.281038e+06,
-        9.006702e+06 ;
-    schema1:weight 1.2418e+04 .
+        9.006702e+06,
+        "0.5%" ;
+    schema1:icaoCode 3.71114e+06,
+        "Edinburgh" .
 
 <http://example.org/data/airport/8> a schema1:Thing ;
-    schema1:action 1.00087e+05 ;
-    schema1:identifier 8 ;
-    schema1:name "Glasgow International" ;
-    schema1:occupancy 4.3631e+04,
-        3.943139e+06,
+    schema1:Airport 8,
+        3.546e+03,
+        4.3631e+04,
+        1.00087e+05,
         4.192121e+06,
-        8.178891e+06 ;
-    schema1:weight 3.546e+03 .
+        8.178891e+06,
+        "7.0%" ;
+    schema1:icaoCode 3.943139e+06,
+        "Glasgow International" .
 
-<http://example.org/data/airport_aircraft/1> a schema1:Thing ;
-    schema1:airport <http://example.org/data/airport/6> ;
-    schema1:identifier 1 ;
-    schema1:vehicle <http://example.org/data/aircraft/5> .
+<http://example.org/data/airport_aircraft/Airport_ID_1-Aircraft_ID_2> a schema1:Thing ;
+    schema1:Airport <http://example.org/data/airport/1>,
+        3 ;
+    schema1:aircraft <http://example.org/data/aircraft/2> ;
+    schema1:name "Airport_ID_1-Aircraft_ID_2" .
 
-<http://example.org/data/airport_aircraft/2> a schema1:Thing ;
-    schema1:airport <http://example.org/data/airport/2> ;
-    schema1:identifier 2 ;
-    schema1:vehicle <http://example.org/data/aircraft/1> .
+<http://example.org/data/airport_aircraft/Airport_ID_2-Aircraft_ID_1> a schema1:Thing ;
+    schema1:Airport <http://example.org/data/airport/2>,
+        2 ;
+    schema1:aircraft <http://example.org/data/aircraft/1> ;
+    schema1:name "Airport_ID_2-Aircraft_ID_1" .
 
-<http://example.org/data/airport_aircraft/3> a schema1:Thing ;
-    schema1:airport <http://example.org/data/airport/1> ;
-    schema1:identifier 3 ;
-    schema1:vehicle <http://example.org/data/aircraft/2> .
+<http://example.org/data/airport_aircraft/Airport_ID_6-Aircraft_ID_5> a schema1:Thing ;
+    schema1:Airport <http://example.org/data/airport/6>,
+        1 ;
+    schema1:aircraft <http://example.org/data/aircraft/5> ;
+    schema1:name "Airport_ID_6-Aircraft_ID_5" .
 
-<http://example.org/data/airport_aircraft/4> a schema1:Thing ;
-    schema1:airport <http://example.org/data/airport/9> ;
-    schema1:identifier 4 ;
-    schema1:vehicle <http://example.org/data/aircraft/3> .
+<http://example.org/data/airport_aircraft/Airport_ID_9-Aircraft_ID_3> a schema1:Thing ;
+    schema1:Airport <http://example.org/data/airport/9>,
+        4 ;
+    schema1:aircraft <http://example.org/data/aircraft/3> ;
+    schema1:name "Airport_ID_9-Aircraft_ID_3" .
 
-<http://example.org/data/match/row_0> a schema1:Thing ;
-    schema1:country "United Arab Emirates" ;
-    schema1:date "March 26–27" ;
-    schema1:episodeNumber 1e+00 ;
-    schema1:location "Mina' Zayid , Abu Dhabi" ;
-    schema1:performer "Hannes Arch" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/1> ;
-    schema1:winner <http://example.org/data/winning_pilot/1> .
+<http://example.org/data/match/1.0> a schema1:Thing ;
+    schema1:Country "United Arab Emirates" ;
+    schema1:Table 1e+00 ;
+    schema1:accelerationTime "Hannes Arch" ;
+    schema1:aircraft <http://example.org/data/aircraft/1> ;
+    schema1:cvdCollectionDate "March 26–27" ;
+    schema1:sportsActivityLocation "Mina' Zayid , Abu Dhabi" ;
+    schema1:winner <http://example.org/data/pilot/1> .
 
-<http://example.org/data/match/row_1> a schema1:Thing ;
-    schema1:country "Australia" ;
-    schema1:date "April 17–18" ;
-    schema1:episodeNumber 2e+00 ;
-    schema1:location "Swan River , Perth" ;
-    schema1:performer "Paul Bonhomme" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/1> ;
-    schema1:winner <http://example.org/data/winning_pilot/4> .
+<http://example.org/data/match/2.0> a schema1:Thing ;
+    schema1:Country "Australia" ;
+    schema1:Table 2e+00 ;
+    schema1:accelerationTime "Paul Bonhomme" ;
+    schema1:aircraft <http://example.org/data/aircraft/1> ;
+    schema1:cvdCollectionDate "April 17–18" ;
+    schema1:sportsActivityLocation "Swan River , Perth" ;
+    schema1:winner <http://example.org/data/pilot/4> .
 
-<http://example.org/data/match/row_2> a schema1:Thing ;
-    schema1:country "Brazil" ;
-    schema1:date "May 8–9" ;
-    schema1:episodeNumber 3e+00 ;
-    schema1:location "Flamengo Beach , Rio de Janeiro" ;
-    schema1:performer "Hannes Arch" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/2> ;
-    schema1:winner <http://example.org/data/winning_pilot/6> .
+<http://example.org/data/match/3.0> a schema1:Thing ;
+    schema1:Country "Brazil" ;
+    schema1:Table 3e+00 ;
+    schema1:accelerationTime "Hannes Arch" ;
+    schema1:aircraft <http://example.org/data/aircraft/2> ;
+    schema1:cvdCollectionDate "May 8–9" ;
+    schema1:sportsActivityLocation "Flamengo Beach , Rio de Janeiro" ;
+    schema1:winner <http://example.org/data/pilot/6> .
 
-<http://example.org/data/match/row_3> a schema1:Thing ;
-    schema1:country "Canada" ;
-    schema1:date "June 5–6" ;
-    schema1:episodeNumber 4e+00 ;
-    schema1:location "Windsor , Ontario" ;
-    schema1:performer "Nigel Lamb" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/4> ;
-    schema1:winner <http://example.org/data/winning_pilot/4> .
+<http://example.org/data/match/4.0> a schema1:Thing ;
+    schema1:Country "Canada" ;
+    schema1:Table 4e+00 ;
+    schema1:accelerationTime "Nigel Lamb" ;
+    schema1:aircraft <http://example.org/data/aircraft/4> ;
+    schema1:cvdCollectionDate "June 5–6" ;
+    schema1:sportsActivityLocation "Windsor , Ontario" ;
+    schema1:winner <http://example.org/data/pilot/4> .
 
-<http://example.org/data/match/row_4> a schema1:Thing ;
-    schema1:country "United States" ;
-    schema1:date "June 19–20" ;
-    schema1:episodeNumber 5e+00 ;
-    schema1:location "New York City" ;
-    schema1:performer "Hannes Arch" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/3> ;
-    schema1:winner <http://example.org/data/winning_pilot/9> .
+<http://example.org/data/match/5.0> a schema1:Thing ;
+    schema1:Country "United States" ;
+    schema1:Table 5e+00 ;
+    schema1:accelerationTime "Hannes Arch" ;
+    schema1:aircraft <http://example.org/data/aircraft/3> ;
+    schema1:cvdCollectionDate "June 19–20" ;
+    schema1:sportsActivityLocation "New York City" ;
+    schema1:winner <http://example.org/data/pilot/9> .
 
-<http://example.org/data/match/row_5> a schema1:Thing ;
-    schema1:country "Germany" ;
-    schema1:date "August 7–8" ;
-    schema1:episodeNumber 6e+00 ;
-    schema1:location "EuroSpeedway Lausitz" ;
-    schema1:performer "Paul Bonhomme" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/4> ;
-    schema1:winner <http://example.org/data/winning_pilot/2> .
+<http://example.org/data/match/6.0> a schema1:Thing ;
+    schema1:Country "Germany" ;
+    schema1:Table 6e+00 ;
+    schema1:accelerationTime "Paul Bonhomme" ;
+    schema1:aircraft <http://example.org/data/aircraft/4> ;
+    schema1:cvdCollectionDate "August 7–8" ;
+    schema1:sportsActivityLocation "EuroSpeedway Lausitz" ;
+    schema1:winner <http://example.org/data/pilot/2> .
 
-<http://example.org/data/match/row_6> a schema1:Thing ;
-    schema1:country "Hungary" ;
-    schema1:date "Cancelled" ;
-    schema1:episodeNumber 7e+00 ;
-    schema1:location "River Danube , Budapest" ;
-    schema1:performer "Cancelled" ;
-    schema1:vehicle <http://example.org/data/winning_aircraft/5> ;
-    schema1:winner <http://example.org/data/winning_pilot/6> .
-
-<http://example.org/data/pilot/1> a schema1:Thing ;
-    schema1:age 23 ;
-    schema1:identifier 1 ;
-    schema1:name "Prof. Zackery Collins" .
+<http://example.org/data/match/7.0> a schema1:Thing ;
+    schema1:Country "Hungary" ;
+    schema1:Table 7e+00 ;
+    schema1:accelerationTime "Cancelled" ;
+    schema1:aircraft <http://example.org/data/aircraft/5> ;
+    schema1:cvdCollectionDate "Cancelled" ;
+    schema1:sportsActivityLocation "River Danube , Budapest" ;
+    schema1:winner <http://example.org/data/pilot/6> .
 
 <http://example.org/data/pilot/10> a schema1:Thing ;
-    schema1:age 26 ;
-    schema1:identifier 10 ;
-    schema1:name "Maxwell Graham" .
+    schema1:Flight 10 ;
+    schema1:Suspended "Maxwell Graham" ;
+    schema1:suggestedMinAge 26 .
 
 <http://example.org/data/pilot/11> a schema1:Thing ;
-    schema1:age 33 ;
-    schema1:identifier 11 ;
-    schema1:name "Blaise Muller" .
+    schema1:Flight 11 ;
+    schema1:Suspended "Blaise Muller" ;
+    schema1:suggestedMinAge 33 .
 
 <http://example.org/data/pilot/12> a schema1:Thing ;
-    schema1:age 30 ;
-    schema1:identifier 12 ;
-    schema1:name "Baylee Steuber" .
-
-<http://example.org/data/pilot/2> a schema1:Thing ;
-    schema1:age 20 ;
-    schema1:identifier 2 ;
-    schema1:name "Katheryn Gorczany IV" .
+    schema1:Flight 12 ;
+    schema1:Suspended "Baylee Steuber" ;
+    schema1:suggestedMinAge 30 .
 
 <http://example.org/data/pilot/3> a schema1:Thing ;
-    schema1:age 23 ;
-    schema1:identifier 3 ;
-    schema1:name "Mr. Cristian Halvorson II" .
-
-<http://example.org/data/pilot/4> a schema1:Thing ;
-    schema1:age 25 ;
-    schema1:identifier 4 ;
-    schema1:name "Ayana Spencer" .
+    schema1:Flight 3 ;
+    schema1:Suspended "Mr. Cristian Halvorson II" ;
+    schema1:suggestedMinAge 23 .
 
 <http://example.org/data/pilot/5> a schema1:Thing ;
-    schema1:age 31 ;
-    schema1:identifier 5 ;
-    schema1:name "Ellen Ledner III" .
-
-<http://example.org/data/pilot/6> a schema1:Thing ;
-    schema1:age 37 ;
-    schema1:identifier 6 ;
-    schema1:name "Elisha Hickle V" .
+    schema1:Flight 5 ;
+    schema1:Suspended "Ellen Ledner III" ;
+    schema1:suggestedMinAge 31 .
 
 <http://example.org/data/pilot/7> a schema1:Thing ;
-    schema1:age 26 ;
-    schema1:identifier 7 ;
-    schema1:name "Dr. Jade Bradtke V" .
+    schema1:Flight 7 ;
+    schema1:Suspended "Dr. Jade Bradtke V" ;
+    schema1:suggestedMinAge 26 .
 
 <http://example.org/data/pilot/8> a schema1:Thing ;
-    schema1:age 30 ;
-    schema1:identifier 8 ;
-    schema1:name "Winnifred Boyle" .
+    schema1:Flight 8 ;
+    schema1:Suspended "Winnifred Boyle" ;
+    schema1:suggestedMinAge 30 .
 
-<http://example.org/data/pilot/9> a schema1:Thing ;
-    schema1:age 29 ;
-    schema1:identifier 9 ;
-    schema1:name "Della Lindgren" .
+<schema:Airport> a rdf:Property ;
+    rdfs:label "Airport"@zh ;
+    rdfs:comment "An airport."@zh .
 
-<http://example.org/data/aircraft/1> a schema1:Thing ;
-    schema1:description "Light utility helicopter" ;
-    schema1:identifier 1 ;
-    schema1:name "Robinson R-22" ;
-    schema1:weight "1,370 lb (635 kg)" .
+<schema:Country> a rdf:Property ;
+    rdfs:label "Country"@zh ;
+    rdfs:comment "A country."@zh .
 
-<http://example.org/data/aircraft/2> a schema1:Thing ;
-    schema1:description "Turboshaft utility helicopter" ;
-    schema1:identifier 2 ;
-    schema1:name "Bell 206B3 JetRanger" ;
-    schema1:weight "3,200 lb (1,451 kg)" .
+<schema:Flight> a rdf:Property ;
+    rdfs:label "Flight"@zh ;
+    rdfs:comment "An airline flight."@zh .
 
-<http://example.org/data/aircraft/3> a schema1:Thing ;
-    schema1:description "Tandem rotor helicopter" ;
-    schema1:identifier 3 ;
-    schema1:name "CH-47D Chinook" ;
-    schema1:weight "50,000 lb (22,680 kg)" .
+<schema:Suspended> a rdf:Property ;
+    rdfs:label "Suspended"@zh ;
+    rdfs:comment "Suspended."@zh .
 
-<http://example.org/data/aircraft/5> a schema1:Thing ;
-    schema1:description "Heavy-lift helicopter" ;
-    schema1:identifier 5 ;
-    schema1:name "CH-53E Super Stallion" ;
-    schema1:weight "73,500 lb (33,300 kg)" .
+<schema:Table> a rdf:Property ;
+    rdfs:label "Table"@zh ;
+    rdfs:comment "A table on a Web page."@zh .
+
+<schema:accelerationTime> a rdf:Property ;
+    rdfs:label "accelerationTime"@zh ;
+    rdfs:comment "The time needed to accelerate the vehicle from a given start velocity to a given target velocity.\\n\\nTypical unit code(s): SEC for seconds\\n\\n* Note: There are unfortunately no standard unit codes for seconds/0..100 km/h or seconds/0..60 mph. Simply use \"SEC\" for seconds and indicate the velocities in the [[name]] of the [[QuantitativeValue]], or use [[valueReference]] with a [[QuantitativeValue]] of 0..60 mph or 0..100 km/h to specify the reference speeds."@zh .
+
+<schema:aircraft> a rdf:Property ;
+    rdfs:label "aircraft"@zh ;
+    rdfs:comment "The kind of aircraft (e.g., \"Boeing 747\")."@zh .
+
+<schema:cvdCollectionDate> a rdf:Property ;
+    rdfs:label "cvdCollectionDate"@zh ;
+    rdfs:comment "collectiondate - Date for which patient counts are reported."@zh .
+
+<schema:icaoCode> a rdf:Property ;
+    rdfs:label "icaoCode"@zh ;
+    rdfs:comment "ICAO identifier for an airport."@zh .
+
+<schema:sportsActivityLocation> a rdf:Property ;
+    rdfs:label "sportsActivityLocation"@zh ;
+    rdfs:comment "A sub property of location. The sports activity location where this action occurred."@zh .
+
+<schema:suggestedMinAge> a rdf:Property ;
+    rdfs:label "suggestedMinAge"@zh ;
+    rdfs:comment "Minimum recommended age in years for the audience or user."@zh .
+
+<schema:weightTotal> a rdf:Property ;
+    rdfs:label "weightTotal"@zh ;
+    rdfs:comment "The permitted total weight of the loaded vehicle, including passengers and cargo and the weight of the empty vehicle.\\n\\nTypical unit code(s): KGM for kilogram, LBR for pound\\n\\n* Note 1: You can indicate additional information in the [[name]] of the [[QuantitativeValue]] node.\\n* Note 2: You may also link to a [[QualitativeValue]] node that provides additional information using [[valueReference]].\\n* Note 3: Note that you can use [[minValue]] and [[maxValue]] to indicate ranges."@zh .
+
+<schema:winner> a rdf:Property ;
+    rdfs:label "winner"@zh ;
+    rdfs:comment "A sub property of participant. The winner of the action."@zh .
 
 <http://example.org/data/airport/1> a schema1:Thing ;
-    schema1:action 4.78693e+05 ;
-    schema1:identifier 1 ;
-    schema1:name "London Heathrow" ;
-    schema1:occupancy 1.47791e+05,
+    schema1:Airport 1,
+        1.47791e+05,
+        4.78693e+05,
+        1.397054e+06,
         5.562516e+06,
-        6.134444e+07,
-        6.705474e+07 ;
-    schema1:weight 1.397054e+06 .
+        6.705474e+07,
+        "1.5%" ;
+    schema1:icaoCode 6.134444e+07,
+        "London Heathrow" .
 
 <http://example.org/data/airport/2> a schema1:Thing ;
-    schema1:action 2.63653e+05 ;
-    schema1:identifier 2 ;
-    schema1:name "London Gatwick" ;
-    schema1:occupancy 4.3873e+04,
+    schema1:Airport 2,
+        4.3873e+04,
+        1.07702e+05,
+        2.63653e+05,
         3.730963e+06,
-        3.043105e+07,
-        3.420589e+07 ;
-    schema1:weight 1.07702e+05 .
+        3.420589e+07,
+        "2.9%" ;
+    schema1:icaoCode 3.043105e+07,
+        "London Gatwick" .
 
 <http://example.org/data/airport/6> a schema1:Thing ;
-    schema1:action 1.12227e+05 ;
-    schema1:identifier 6 ;
-    schema1:name "Birmingham Airport" ;
-    schema1:occupancy 5.0889e+04,
+    schema1:Airport 6,
+        1.2192e+04,
+        5.0889e+04,
+        1.12227e+05,
         1.471538e+06,
-        8.105162e+06,
-        9.627589e+06 ;
-    schema1:weight 1.2192e+04 .
+        9.627589e+06,
+        "4.3%" ;
+    schema1:icaoCode 8.105162e+06,
+        "Birmingham Airport" .
 
 <http://example.org/data/airport/9> a schema1:Thing ;
-    schema1:action 7.6517e+04 ;
-    schema1:identifier 9 ;
-    schema1:name "Bristol" ;
-    schema1:occupancy 3.8458e+04,
+    schema1:Airport 3e+00,
+        9,
+        3.8458e+04,
+        7.6517e+04,
         1.171605e+06,
-        5.057051e+06,
-        6.267114e+06 ;
-    schema1:weight 3e+00 .
+        6.267114e+06,
+        "5.7%" ;
+    schema1:icaoCode 5.057051e+06,
+        "Bristol" .
+
+<http://example.org/data/pilot/1> a schema1:Thing ;
+    schema1:Flight 1 ;
+    schema1:Suspended "Prof. Zackery Collins" ;
+    schema1:suggestedMinAge 23 .
+
+<http://example.org/data/pilot/2> a schema1:Thing ;
+    schema1:Flight 2 ;
+    schema1:Suspended "Katheryn Gorczany IV" ;
+    schema1:suggestedMinAge 20 .
+
+<http://example.org/data/pilot/9> a schema1:Thing ;
+    schema1:Flight 9 ;
+    schema1:Suspended "Della Lindgren" ;
+    schema1:suggestedMinAge 29 .
+
+<http://example.org/data/aircraft/2> a schema1:Thing ;
+    schema1:aircraft 2,
+        "3.7 lb/ft² (18 kg/m²)",
+        "872 ft² (81.1 m²)",
+        "Bell 206B3 JetRanger",
+        "Turboshaft utility helicopter" ;
+    schema1:weightTotal "3,200 lb (1,451 kg)" .
+
+<http://example.org/data/aircraft/3> a schema1:Thing ;
+    schema1:aircraft 3,
+        "5,655 ft² (526 m²)",
+        "8.8 lb/ft² (43 kg/m²)",
+        "CH-47D Chinook",
+        "Tandem rotor helicopter" ;
+    schema1:weightTotal "50,000 lb (22,680 kg)" .
+
+<http://example.org/data/aircraft/4> a schema1:Thing ;
+    schema1:aircraft 4,
+        "14.5 lb/ft² (71 kg/m²)",
+        "8,495 ft² (789 m²)",
+        "Heavy-lift helicopter",
+        "Mil Mi-26" ;
+    schema1:weightTotal "123,500 lb (56,000 kg)" .
+
+<http://example.org/data/aircraft/5> a schema1:Thing ;
+    schema1:aircraft 5,
+        "15 lb/ft² (72 kg/m²)",
+        "4,900 ft² (460 m²)",
+        "CH-53E Super Stallion",
+        "Heavy-lift helicopter" ;
+    schema1:weightTotal "73,500 lb (33,300 kg)" .
+
+<http://example.org/data/pilot/4> a schema1:Thing ;
+    schema1:Flight 4 ;
+    schema1:Suspended "Ayana Spencer" ;
+    schema1:suggestedMinAge 25 .
+
+<http://example.org/data/pilot/6> a schema1:Thing ;
+    schema1:Flight 6 ;
+    schema1:Suspended "Elisha Hickle V" ;
+    schema1:suggestedMinAge 37 .
+
+<http://example.org/data/aircraft/1> a schema1:Thing ;
+    schema1:aircraft 1,
+        "2.6 lb/ft² (14 kg/m²)",
+        "497 ft² (46.2 m²)",
+        "Light utility helicopter",
+        "Robinson R-22" ;
+    schema1:weightTotal "1,370 lb (635 kg)" .
 

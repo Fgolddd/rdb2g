@@ -8,9 +8,7 @@ class RDFGraphBuilder:
     def __init__(self):
         self.g = Graph()
         self.SCHEMA = Namespace("http://schema.org/")
-        self.TERM = Namespace("http://example.org/term-meta/")
         self.g.bind("schema", self.SCHEMA)
-        self.g.bind("term", self.TERM)
         self.g.bind("rdfs", RDFS)
         self.base_uri = "http://example.org/data/"
         self._declared_terms = set()
@@ -52,26 +50,29 @@ class RDFGraphBuilder:
         term_uri = URIRef(uri)
         label = str(mapping_value.get("label", "")).strip()
         comment = str(mapping_value.get("comment", "")).strip()
-        reason = str(mapping_value.get("reason", "")).strip()
 
         self.g.add((term_uri, RDF.type, RDF.Property))
         if label:
             self.g.add((term_uri, RDFS.label, Literal(label, lang="zh")))
         if comment:
             self.g.add((term_uri, RDFS.comment, Literal(comment, lang="zh")))
-        if reason:
-            self.g.add((term_uri, self.TERM.mappingReason, Literal(reason)))
 
         self._declared_terms.add(uri)
 
-    def add_table_data(self, dataframe, table_name, mapping, primary_key=None, foreign_keys=None):
+    def add_table_data(self, dataframe, table_name, mapping, primary_key=None, foreign_keys=None, foreign_key_refs=None):
         """
         将 DataFrame 的每一行转换为 RDF 子图。
         通用化 URI 构建，并增加了防御性代码以确保复合主键的正确性。
         """
         print(f"🔨 正在为表 '{table_name}' 生成图谱 (包含关系链接)...")
         
-        fk_set = set(foreign_keys or [])
+        fk_set = {str(col).lower() for col in (foreign_keys or [])}
+        fk_ref_map = {}
+        for fk_col, ref_table in (foreign_key_refs or {}).items():
+            fk_col_str = str(fk_col).strip().lower()
+            ref_table_str = str(ref_table).strip().lower()
+            if fk_col_str and ref_table_str:
+                fk_ref_map[fk_col_str] = ref_table_str
         for _, mapping_value in (mapping or {}).items():
             self._ensure_term_semantics(mapping_value)
         
@@ -127,8 +128,9 @@ class RDFGraphBuilder:
                 else:
                     prop_uri = URIRef(prop_uri_str)
 
-                if col in fk_set:
-                    referenced_table = self._infer_referenced_table(col)
+                col_lower = str(col).lower()
+                if col_lower in fk_set:
+                    referenced_table = fk_ref_map.get(col_lower) or self._infer_referenced_table(col)
                     referenced_id = urllib.parse.quote(str(val))
                     object_uri = URIRef(f"{self.base_uri}{referenced_table}/{referenced_id}")
                     self.g.add((subject_uri, prop_uri, object_uri))

@@ -1,0 +1,9 @@
+id,task_type,sql_success,kg_success,sql_latency_ms,kg_latency_ms,sql_answer_correct,kg_answer_correct,sql_explainability_score,kg_explainability_score,error_type_sql,error_type_kg,reviewer,remark
+Q001,basic,1,1,0,0,1,1,2,3,,,,
+Q002,basic,1,1,0,0,1,1,2,3,,,,
+Q003,join,1,1,0,0,1,1,2,4,,,,
+Q004,join,1,1,0,0,1,1,2,4,,,,
+Q005,semantic,1,1,0,0,1,1,2,4,,,,
+Q006,semantic,0,1,0,0,0,1,1,5,,,,
+Q007,multihop,0,1,0,0,0,1,1,4,,,,
+Q008,multihop,0,1,0,0,0,1,1,5,,,,
