@@ -1,18 +1,20 @@
 import os
 import json
+import time
 import urllib.parse
-from openai import OpenAI
+from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
 
 class MultiAgentSystem:
     def __init__(self, vector_store=None, allow_public_uri=False, local_uri_base="http://example.org/auto/"):
-        # 使用 DashScope 的 OpenAI 兼容接口（通义千问）
+        # 使用豆包 Ark 的 OpenAI 兼容接口
         self.client = OpenAI(
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=os.getenv("ARK_API_KEY"),
+            base_url=os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
         )
-        # 聊天模型可通过环境变量覆盖，默认使用 qwen-plus
-        self.chat_model = os.getenv("QWEN_CHAT_MODEL", "qwen-plus")
+        # 聊天模型可通过环境变量覆盖，默认使用豆包模型
+        self.chat_model = os.getenv("DOUBAO_CHAT_MODEL", "doubao-seed-2-0-mini-260215")
         self.vector_store = vector_store
+        self.debug_rag = os.getenv("DEBUG_RAG_RESULTS", "0") == "1"
         self.allow_public_uri = allow_public_uri
         self.local_uri_base = local_uri_base.rstrip("/") + "/"
         self.public_uri_prefixes = (
@@ -286,16 +288,27 @@ class MultiAgentSystem:
 
         return {"pk": pk, "fks": dedup_fks}
 
-    def _chat(self, messages):
-        completion = self.client.chat.completions.create(
-            model=self.chat_model,
-            messages=messages,
-        )
-        try:
-            return completion.choices[0].message.content
-        except Exception:
-            # 回退：直接返回完整 JSON 字符串，便于排错
-            return json.dumps(completion.model_dump(), ensure_ascii=False)
+    def _chat(self, messages, max_retries=6):
+        last_exc = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                completion = self.client.chat.completions.create(
+                    model=self.chat_model,
+                    messages=messages,
+                )
+                try:
+                    return completion.choices[0].message.content
+                except Exception:
+                    # 回退：直接返回完整 JSON 字符串，便于排错
+                    return json.dumps(completion.model_dump(), ensure_ascii=False)
+            except (APIConnectionError, APITimeoutError, RateLimitError) as e:
+                last_exc = e
+                if attempt >= max_retries:
+                    break
+                wait_s = min(2 ** attempt, 30)
+                print(f"⚠️ Chat 请求失败({type(e).__name__})，{wait_s}s 后重试（{attempt}/{max_retries}）...")
+                time.sleep(wait_s)
+        raise last_exc
 
     def _get_rag_context(self, table_fingerprint):
         """为表中的每一列检索 RAG 上下文"""
@@ -325,19 +338,20 @@ class MultiAgentSystem:
                 column_code=col_name,
             )
 
-            # --- Debug: 打印检索结果 ---
-            print(f"\n--- RAG Search Results for query: '{query}' ---")
-            if not results:
-                print("No results found.")
-            else:
-                for i, doc in enumerate(results):
-                    m = self._doc_meta(doc)
-                    print(f"Result {i+1}:")
-                    print(f"  - URI: {m['uri']}")
-                    print(f"  - Domain: {m['domain']}, ColumnCode: {m['column_code']}")
-                    print(f"  - Label: {m['label']}, Type: {m['type']}, Range: {m['range']}")
-                    print(f"  - Snippet: {m['snippet']}...")
-            print("-------------------------------------------------\n")
+            # --- Debug: 打印检索结果（默认关闭） ---
+            if self.debug_rag:
+                print(f"\n--- RAG Search Results for query: '{query}' ---")
+                if not results:
+                    print("No results found.")
+                else:
+                    for i, doc in enumerate(results):
+                        m = self._doc_meta(doc)
+                        print(f"Result {i+1}:")
+                        print(f"  - URI: {m['uri']}")
+                        print(f"  - Domain: {m['domain']}, ColumnCode: {m['column_code']}")
+                        print(f"  - Label: {m['label']}, Type: {m['type']}, Range: {m['range']}")
+                        print(f"  - Snippet: {m['snippet']}...")
+                print("-------------------------------------------------\n")
             # --- End Debug ---
 
             context += f"\nColumn '{col_name}' candidate terms:\n"

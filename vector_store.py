@@ -10,19 +10,19 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from openai import OpenAI
 
-class QwenEmbeddings:
-    """使用 DashScope 的 OpenAI 兼容接口实现的最小 Embeddings 适配器，
-    以避免额外安装 dashscope SDK，直接复用 openai 客户端。
+class DoubaoEmbeddings:
+    """使用豆包 Ark 的 OpenAI 兼容接口实现最小 Embeddings 适配器，
+    复用 openai 客户端，满足 LangChain 向量库所需接口。
     满足 LangChain 向量库所需的 embed_query / embed_documents 接口。
     """
     def __init__(self, model: str | None = None, api_key: str | None = None, base_url: str | None = None):
-        self.model = model or os.getenv("QWEN_EMBEDDING_MODEL")
-        # DashScope embedding 接口对单条输入长度有限制（报错信息为 1~8192）
+        self.model = model or os.getenv("DOUBAO_EMBEDDING_MODEL")
+        # Ark embedding 接口对单条输入长度有限制，做保守截断避免 400。
         # 这里采用保守字符上限，避免超长文本触发 400 InvalidParameter。
-        self.max_input_chars = int(os.getenv("QWEN_EMBEDDING_MAX_CHARS", "4000"))
+        self.max_input_chars = int(os.getenv("DOUBAO_EMBEDDING_MAX_CHARS", "4000"))
         self.client = OpenAI(
-            api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
-            base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            api_key=api_key or os.getenv("ARK_API_KEY"),
+            base_url=base_url or os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
         )
 
     def _sanitize_text(self, text: str | None, fallback: str) -> str:
@@ -43,8 +43,8 @@ class QwenEmbeddings:
         if not texts:
             return []
         cleaned_texts = [self._sanitize_text(t, fallback="[empty document]") for t in texts]
-        # DashScope 兼容接口限制每次最多 10 条输入，需做分批
-        max_batch = int(os.getenv("QWEN_EMBEDDING_BATCH_SIZE", "10"))
+        # 按批次请求，降低单次请求体过大导致的失败概率。
+        max_batch = int(os.getenv("DOUBAO_EMBEDDING_BATCH_SIZE", "10"))
         results = []
         for i in range(0, len(cleaned_texts), max_batch):
             batch = cleaned_texts[i:i+max_batch]
@@ -57,8 +57,8 @@ class OntologyVectorStore:
     def __init__(self, persist_dir="./data/chroma_db", enable_retrieval=True):
         self.persist_dir = persist_dir
         self.enable_retrieval = enable_retrieval
-        # 使用通义千问（DashScope 兼容接口）作为向量嵌入
-        self.embedding_fn = QwenEmbeddings()
+        # 使用豆包 Ark（OpenAI 兼容接口）作为向量嵌入
+        self.embedding_fn = DoubaoEmbeddings()
         self.vector_db = None
         self.meta_file = "_index_meta.json"
         self.index_schema_version = 3
