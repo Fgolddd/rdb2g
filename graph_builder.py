@@ -1,4 +1,5 @@
 from rdflib import Graph, URIRef, Literal, RDF, Namespace
+from rdflib.namespace import RDFS
 import urllib.parse
 import pandas as pd
 import re
@@ -8,7 +9,9 @@ class RDFGraphBuilder:
         self.g = Graph()
         self.SCHEMA = Namespace("http://schema.org/")
         self.g.bind("schema", self.SCHEMA)
+        self.g.bind("rdfs", RDFS)
         self.base_uri = "http://example.org/data/"
+        self._declared_terms = set()
 
     def _infer_referenced_table(self, fk_column_name):
         """
@@ -18,14 +21,60 @@ class RDFGraphBuilder:
         base_name = re.sub(r'(_id|_fk|id|fk)$', '', fk_column_name, flags=re.IGNORECASE)
         return base_name.lower()
 
-    def add_table_data(self, dataframe, table_name, mapping, primary_key=None, foreign_keys=None):
+    def _extract_term_uri(self, mapping_value):
+        """兼容两种映射格式：
+        1) 旧格式: column -> "uri"
+        2) 新格式: column -> {"uri": "...", ...}
+        """
+        if mapping_value is None:
+            return None
+        if isinstance(mapping_value, dict):
+            uri = mapping_value.get("uri")
+            if isinstance(uri, str):
+                uri = uri.strip()
+                return uri or None
+            return None
+        if isinstance(mapping_value, str):
+            uri = mapping_value.strip()
+            return uri or None
+        return None
+
+    def _ensure_term_semantics(self, mapping_value):
+        """为术语补充最小语义注释（仅一次）"""
+        if not isinstance(mapping_value, dict):
+            return
+        uri = self._extract_term_uri(mapping_value)
+        if not uri or uri in self._declared_terms:
+            return
+
+        term_uri = URIRef(uri)
+        label = str(mapping_value.get("label", "")).strip()
+        comment = str(mapping_value.get("comment", "")).strip()
+
+        self.g.add((term_uri, RDF.type, RDF.Property))
+        if label:
+            self.g.add((term_uri, RDFS.label, Literal(label, lang="zh")))
+        if comment:
+            self.g.add((term_uri, RDFS.comment, Literal(comment, lang="zh")))
+
+        self._declared_terms.add(uri)
+
+    def add_table_data(self, dataframe, table_name, mapping, primary_key=None, foreign_keys=None, foreign_key_refs=None):
         """
         将 DataFrame 的每一行转换为 RDF 子图。
         通用化 URI 构建，并增加了防御性代码以确保复合主键的正确性。
         """
         print(f"🔨 正在为表 '{table_name}' 生成图谱 (包含关系链接)...")
         
-        fk_set = set(foreign_keys or [])
+        fk_set = {str(col).lower() for col in (foreign_keys or [])}
+        fk_ref_map = {}
+        for fk_col, ref_table in (foreign_key_refs or {}).items():
+            fk_col_str = str(fk_col).strip().lower()
+            ref_table_str = str(ref_table).strip().lower()
+            if fk_col_str and ref_table_str:
+                fk_ref_map[fk_col_str] = ref_table_str
+        for _, mapping_value in (mapping or {}).items():
+            self._ensure_term_semantics(mapping_value)
         
         for _, row in dataframe.iterrows():
             # 1. 构建当前行的主语 URI
@@ -68,7 +117,8 @@ class RDFGraphBuilder:
                 if pd.isna(val):
                     continue
                 
-                schema_term = mapping.get(col)
+                mapping_value = mapping.get(col)
+                schema_term = self._extract_term_uri(mapping_value)
                 if not schema_term or schema_term.lower() == 'null':
                     continue
 
@@ -78,8 +128,9 @@ class RDFGraphBuilder:
                 else:
                     prop_uri = URIRef(prop_uri_str)
 
-                if col in fk_set:
-                    referenced_table = self._infer_referenced_table(col)
+                col_lower = str(col).lower()
+                if col_lower in fk_set:
+                    referenced_table = fk_ref_map.get(col_lower) or self._infer_referenced_table(col)
                     referenced_id = urllib.parse.quote(str(val))
                     object_uri = URIRef(f"{self.base_uri}{referenced_table}/{referenced_id}")
                     self.g.add((subject_uri, prop_uri, object_uri))
