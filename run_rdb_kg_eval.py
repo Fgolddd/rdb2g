@@ -6,8 +6,166 @@ import re
 import sqlite3
 import time
 from pathlib import Path
+from collections import Counter, defaultdict
+from urllib.parse import urlparse
 
 from neo4j import GraphDatabase
+
+
+_FIELD_DISPLAY_MAP = None
+_TABLE_FIELD_DISPLAY_MAP = None
+_DEFAULT_DISPLAY_KB = Path("data/company/zhongshan_rag_terms.json")
+
+
+def _load_kb_entries(kb_path: Path):
+    if not kb_path.exists():
+        return []
+    try:
+        with kb_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return []
+
+    if isinstance(data, list):
+        entries = data
+    elif isinstance(data, dict):
+        if isinstance(data.get("terms"), list):
+            entries = data["terms"]
+        elif isinstance(data.get("@graph"), list):
+            entries = data["@graph"]
+        else:
+            entries = [data]
+    else:
+        entries = []
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def _load_display_maps():
+    global _FIELD_DISPLAY_MAP, _TABLE_FIELD_DISPLAY_MAP
+    if _FIELD_DISPLAY_MAP is not None and _TABLE_FIELD_DISPLAY_MAP is not None:
+        return _FIELD_DISPLAY_MAP, _TABLE_FIELD_DISPLAY_MAP
+
+    field_counters = defaultdict(Counter)
+    table_field_map = {}
+
+    for entry in _load_kb_entries(_DEFAULT_DISPLAY_KB):
+        label = str(entry.get("label", "")).strip()
+        uri = str(entry.get("uri", "")).strip()
+        domain = str(entry.get("domain", "")).strip()
+        if not label or not uri:
+            continue
+
+        tail = uri
+        if uri.startswith("http://") or uri.startswith("https://"):
+            try:
+                tail = urlparse(uri).path.rsplit("/", 1)[-1] or uri.rsplit("/", 1)[-1]
+            except Exception:
+                tail = uri.rsplit("/", 1)[-1]
+
+        table_name = domain
+        field_name = tail
+        if "." in tail:
+            parts = tail.rsplit(".", 1)
+            if len(parts) == 2 and parts[0] and parts[1]:
+                table_name = parts[0]
+                field_name = parts[1]
+
+        field_name = str(field_name).strip()
+        if not field_name:
+            continue
+
+        field_counters[field_name][label] += 1
+        field_counters[field_name.lower()][label] += 1
+        if table_name:
+            table_field_map[f"{str(table_name).lower()}.{field_name.lower()}"] = label
+
+    field_map = {
+        field: counter.most_common(1)[0][0]
+        for field, counter in field_counters.items()
+        if counter
+    }
+    field_map.setdefault("gid", "记录ID")
+    field_map.setdefault("geom", "空间几何")
+    field_map.setdefault("Shape_Length", "几何长度")
+    field_map.setdefault("Shape_Area", "几何面积")
+    field_map.setdefault("S_GUID", "上级系统标识码")
+
+    table_field_map.update({
+        "zs_mp_bz.dm": "门牌代码",
+        "zs_dh_bz.dm": "楼栋代码",
+        "zs_dy_bz.dm": "单元代码",
+        "zs_fj_bz.dm": "房间代码",
+        "zs_yl_bz.dm": "院落代码",
+        "zs_mp_bz.dhbm": "门牌别名",
+        "zs_dh_bz.dhbm": "栋号别名",
+        "zs_gaj_xq.gadm": "公安组织机构_代码",
+        "zs_gafj_xq.gadm": "公安组织机构_代码",
+        "zs_pcs_xq.gadm": "公安组织机构_代码",
+        "zs_jws_xq.gadm": "公安组织机构_代码",
+        "zs_gaj_xq.gamc": "公安组织机构_名称",
+        "zs_gafj_xq.gamc": "公安组织机构_名称",
+        "zs_pcs_xq.gamc": "公安组织机构_名称",
+        "zs_jws_xq.gamc": "公安组织机构_名称",
+    })
+
+    _FIELD_DISPLAY_MAP = field_map
+    _TABLE_FIELD_DISPLAY_MAP = table_field_map
+    return _FIELD_DISPLAY_MAP, _TABLE_FIELD_DISPLAY_MAP
+
+
+def _parse_field_key(key: str):
+    table_hint = None
+    field_hint = key
+    text = str(key).strip()
+    if not text:
+        return table_hint, field_hint
+
+    if text.startswith("http://") or text.startswith("https://"):
+        try:
+            tail = urlparse(text).path.rsplit("/", 1)[-1]
+            if not tail:
+                tail = text.rsplit("/", 1)[-1]
+        except Exception:
+            tail = text.rsplit("/", 1)[-1]
+        text = tail
+
+    if "." in text:
+        parts = text.rsplit(".", 1)
+        if len(parts) == 2 and parts[0] and parts[1]:
+            table_hint = parts[0].lower()
+            field_hint = parts[1]
+            return table_hint, field_hint
+
+    return table_hint, text
+
+
+def _display_name_for_key(key: str):
+    field_map, table_field_map = _load_display_maps()
+    table_hint, field_hint = _parse_field_key(key)
+    if table_hint and field_hint:
+        mapped = table_field_map.get(f"{table_hint}.{field_hint.lower()}")
+        if mapped:
+            return mapped
+    return field_map.get(field_hint, field_map.get(str(field_hint).lower(), field_hint))
+
+
+def _preview_to_cn(preview_rows):
+    if not isinstance(preview_rows, list):
+        return preview_rows
+
+    converted = []
+    for row in preview_rows:
+        if not isinstance(row, dict):
+            converted.append(row)
+            continue
+        cn_row = {}
+        for key, value in row.items():
+            display_key = _display_name_for_key(str(key))
+            if display_key in cn_row:
+                display_key = f"{display_key}<{key}>"
+            cn_row[display_key] = value
+        converted.append(cn_row)
+    return converted
 
 
 def load_cases(question_bank_path: Path):
@@ -40,6 +198,7 @@ def run_rdb_eval(cases, db_path: Path):
                         "row_count": 0,
                         "error_type": "not_executable",
                         "result_preview": "",
+                        "result_preview_cn": "",
                     }
                 )
                 continue
@@ -50,6 +209,7 @@ def run_rdb_eval(cases, db_path: Path):
                 rows = cursor.fetchall()
                 latency_ms = round((time.perf_counter() - start) * 1000, 3)
                 preview = [dict(r) for r in rows[:5]]
+                preview_cn = _preview_to_cn(preview)
                 results.append(
                     {
                         "id": case["id"],
@@ -60,6 +220,7 @@ def run_rdb_eval(cases, db_path: Path):
                         "row_count": len(rows),
                         "error_type": "",
                         "result_preview": json.dumps(preview, ensure_ascii=False),
+                        "result_preview_cn": json.dumps(preview_cn, ensure_ascii=False),
                     }
                 )
             except Exception as e:
@@ -74,6 +235,7 @@ def run_rdb_eval(cases, db_path: Path):
                         "row_count": 0,
                         "error_type": type(e).__name__,
                         "result_preview": str(e)[:500],
+                        "result_preview_cn": "",
                     }
                 )
     finally:
@@ -104,6 +266,7 @@ def run_kg_eval_neo4j(cases, auth_data: dict):
                             "row_count": 0,
                             "error_type": "not_executable",
                             "result_preview": "",
+                            "result_preview_cn": "",
                         }
                     )
                     continue
@@ -119,6 +282,7 @@ def run_kg_eval_neo4j(cases, auth_data: dict):
                             "row_count": 0,
                             "error_type": "not_cypher_query",
                             "result_preview": "当前 KG 路径已改为 Neo4j/Cypher，请将题库中的 KG 查询改为 Cypher。",
+                            "result_preview_cn": "当前 KG 路径已改为 Neo4j/Cypher，请将题库中的 KG 查询改为 Cypher。",
                         }
                     )
                     continue
@@ -135,6 +299,7 @@ def run_kg_eval_neo4j(cases, auth_data: dict):
                     else:
                         latency_ms = round((time.perf_counter() - start) * 1000, 3)
                     preview = records[:5]
+                    preview_cn = _preview_to_cn(preview)
                     results.append(
                         {
                             "id": case["id"],
@@ -145,6 +310,7 @@ def run_kg_eval_neo4j(cases, auth_data: dict):
                             "row_count": len(records),
                             "error_type": "",
                             "result_preview": json.dumps(preview, ensure_ascii=False),
+                            "result_preview_cn": json.dumps(preview_cn, ensure_ascii=False),
                         }
                     )
                 except Exception as e:
@@ -159,6 +325,7 @@ def run_kg_eval_neo4j(cases, auth_data: dict):
                             "row_count": 0,
                             "error_type": type(e).__name__,
                             "result_preview": str(e)[:500],
+                            "result_preview_cn": "",
                         }
                     )
     finally:
@@ -262,7 +429,7 @@ def main():
         write_csv(
             args.out_dir / "eval_rdb_results.csv",
             rdb_rows,
-            ["id", "task_type", "engine", "success", "latency_ms", "row_count", "error_type", "result_preview"],
+            ["id", "task_type", "engine", "success", "latency_ms", "row_count", "error_type", "result_preview", "result_preview_cn"],
         )
         print(f"RDB results saved: {args.out_dir / 'eval_rdb_results.csv'}")
 
@@ -280,7 +447,7 @@ def main():
         write_csv(
             args.out_dir / "eval_kg_results.csv",
             kg_rows,
-            ["id", "task_type", "engine", "success", "latency_ms", "row_count", "error_type", "result_preview"],
+            ["id", "task_type", "engine", "success", "latency_ms", "row_count", "error_type", "result_preview", "result_preview_cn"],
         )
         print(f"KG results saved: {args.out_dir / 'eval_kg_results.csv'}")
 

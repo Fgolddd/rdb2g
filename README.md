@@ -14,7 +14,7 @@
 
 - `main.py`：主入口，负责 TTL 构建
 - `agents.py`：Mapping / Relation / Validator 多智能体逻辑
-- `vector_store.py`：Doubao Embedding + Chroma 向量检索
+- `vector_store.py`：Qwen Embedding + Chroma 向量检索
 - `graph_builder.py`：RDF 三元组构建与 TTL 序列化
 - `dataloader.py`：SQLite 数据读取与表指纹生成
 - `schema_parser.py`：Schema.org / 私域 KB 解析
@@ -44,15 +44,16 @@ pip install -r requirements.txt
 
 必需（映射/RAG）：
 
-- `ARK_API_KEY`
+- `DASHSCOPE_API_KEY`
 
 常用可选：
 
-- `DOUBAO_CHAT_MODEL`
-- `DOUBAO_EMBEDDING_MODEL`
-- `DOUBAO_EMBEDDING_BATCH_SIZE`
-- `DOUBAO_EMBEDDING_MAX_CHARS`
-- `ARK_BASE_URL`
+- `QWEN_CHAT_MODEL`
+- `QWEN_EMBEDDING_MODEL`
+- `QWEN_EMBEDDING_BATCH_SIZE`
+- `QWEN_EMBEDDING_MAX_CHARS`
+- `QWEN_BASE_URL`
+- `QWEN_ENABLE_THINKING`
 - `DEBUG_RAG_RESULTS`
 
 Neo4j（导入/评测）：

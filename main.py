@@ -80,13 +80,25 @@ def _choose_mapping_workers(pending_count):
 
 def _init_vector_store(kb_file=None, schema_file=None):
     """初始化向量库：私域知识库优先，其次兼容 schema.org，最后可无知识库模式"""
+    def _fallback_no_retrieval(reason):
+        print(f"⚠️ 向量检索初始化失败，降级为无检索模式：{reason}")
+        print("   提示：将 QWEN_EMBEDDING_MODEL 改为你账号可用的 DashScope Embedding 模型后可恢复 RAG。")
+        store = OntologyVectorStore(enable_retrieval=False)
+        store.create_or_load_index()
+        return store
+
     if kb_file:
         if not os.path.exists(kb_file):
             raise FileNotFoundError(f"⚠️ 未找到私域知识库文件: {kb_file}")
         terms = parse_private_kb(kb_file)
         persist_dir = _build_index_dir(kb_file, "private")
         store = OntologyVectorStore(persist_dir=persist_dir, enable_retrieval=True)
-        store.create_or_load_index(terms)
+        try:
+            store.create_or_load_index(terms)
+        except RuntimeError as e:
+            if "Embedding 模型不可用" in str(e):
+                return _fallback_no_retrieval(e)
+            raise
         return store
 
     if schema_file:
@@ -95,7 +107,12 @@ def _init_vector_store(kb_file=None, schema_file=None):
         terms = parse_schema_org(schema_file)
         persist_dir = _build_index_dir(schema_file, "schema")
         store = OntologyVectorStore(persist_dir=persist_dir, enable_retrieval=True)
-        store.create_or_load_index(terms)
+        try:
+            store.create_or_load_index(terms)
+        except RuntimeError as e:
+            if "Embedding 模型不可用" in str(e):
+                return _fallback_no_retrieval(e)
+            raise
         return store
 
     # 无知识库：完全依赖模型能力
@@ -137,7 +154,7 @@ def main(db_path, kb_file=None, schema_file=None, allow_public_uri=False):
         print(f"⚠️ 未找到数据库文件: {DB_PATH}，跳过执行。")
         return
 
-    graph_builder = RDFGraphBuilder()
+    graph_builder = RDFGraphBuilder(kb_file=kb_file)
 
     # 获取所有表
     tables = loader.get_all_table_names()

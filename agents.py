@@ -6,13 +6,13 @@ from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
 
 class MultiAgentSystem:
     def __init__(self, vector_store=None, allow_public_uri=False, local_uri_base="http://example.org/auto/"):
-        # 使用豆包 Ark 的 OpenAI 兼容接口
+        # 使用 Qwen(DashScope) 的 OpenAI 兼容接口
         self.client = OpenAI(
-            api_key=os.getenv("ARK_API_KEY"),
-            base_url=os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+            api_key=os.getenv("DASHSCOPE_API_KEY"),
+            base_url=os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         )
-        # 聊天模型可通过环境变量覆盖，默认使用豆包模型
-        self.chat_model = os.getenv("DOUBAO_CHAT_MODEL", "doubao-seed-2-0-mini-260215")
+        self.chat_model = os.getenv("QWEN_CHAT_MODEL", "qwen3.5-flash")
+        self.enable_thinking = os.getenv("QWEN_ENABLE_THINKING", "1") == "1"
         self.vector_store = vector_store
         self.debug_rag = os.getenv("DEBUG_RAG_RESULTS", "0") == "1"
         self.allow_public_uri = allow_public_uri
@@ -73,6 +73,9 @@ class MultiAgentSystem:
             "comment": str(item.get("comment", "")).strip(),
             "domain": str(item.get("domain", "")).strip(),
             "range": str(item.get("range", "")).strip(),
+            "role": str(item.get("role", "")).strip(),
+            "priority": str(item.get("priority", "")).strip(),
+            "canonical_concept_id": str(item.get("canonical_concept_id", "")).strip(),
         }
 
     def _normalize_candidate_list(self, candidates):
@@ -209,6 +212,11 @@ class MultiAgentSystem:
         term_type = str(meta.get("type") or payload.get("type", "")).strip()
         range_val = str(meta.get("range") or payload.get("range", "")).strip()
         comment = str(meta.get("comment") or payload.get("comment", "")).strip()
+        role = str(meta.get("role") or payload.get("role", "")).strip()
+        priority = str(meta.get("priority") or payload.get("priority", "")).strip()
+        canonical_concept_id = str(
+            meta.get("canonical_concept_id") or payload.get("canonical_concept_id", "")
+        ).strip()
         snippet = raw_content.replace("\n", " ")[:180]
         return {
             "uri": uri,
@@ -218,8 +226,68 @@ class MultiAgentSystem:
             "type": term_type,
             "range": range_val,
             "comment": comment,
+            "role": role,
+            "priority": priority,
+            "canonical_concept_id": canonical_concept_id,
             "snippet": snippet,
         }
+
+    def _priority_weight(self, priority):
+        value = str(priority or "").strip().upper()
+        if value == "P0":
+            return 30
+        if value == "P1":
+            return 10
+        if value == "P2":
+            return 0
+        return 0
+
+    def _role_weight(self, role):
+        value = str(role or "").strip().lower()
+        if value == "semantic_fk":
+            return 25
+        if value == "business_key":
+            return 20
+        if value == "entity_name":
+            return 15
+        return 0
+
+    def _rerank_rag_candidates(self, docs, column_name, top_k=5):
+        if not docs:
+            return []
+
+        col_name = str(column_name or "").strip().lower()
+        scored = []
+        for idx, doc in enumerate(docs):
+            m = self._doc_meta(doc)
+            if not m.get("uri"):
+                continue
+            score = self._priority_weight(m.get("priority")) + self._role_weight(m.get("role"))
+            if str(m.get("column_code", "")).strip().lower() == col_name:
+                score += 8
+            scored.append((score, idx, m))
+
+        scored.sort(key=lambda x: (-x[0], x[1]))
+
+        selected = []
+        seen_uri = set()
+        seen_concepts = set()
+        for _, _, m in scored:
+            uri = m["uri"]
+            if uri in seen_uri:
+                continue
+
+            concept = str(m.get("canonical_concept_id", "")).strip().lower()
+            if concept and concept in seen_concepts:
+                continue
+
+            seen_uri.add(uri)
+            if concept:
+                seen_concepts.add(concept)
+            selected.append(m)
+            if len(selected) >= max(int(top_k), 1):
+                break
+        return selected
 
     def _has_cross_table_evidence(self, column_name, table_fingerprint):
         table_name = str(table_fingerprint.get("table_name", "")).lower()
@@ -292,9 +360,11 @@ class MultiAgentSystem:
         last_exc = None
         for attempt in range(1, max_retries + 1):
             try:
+                extra_body = {"enable_thinking": True} if self.enable_thinking else None
                 completion = self.client.chat.completions.create(
                     model=self.chat_model,
                     messages=messages,
+                    extra_body=extra_body,
                 )
                 try:
                     return completion.choices[0].message.content
@@ -344,26 +414,22 @@ class MultiAgentSystem:
                 if not results:
                     print("No results found.")
                 else:
-                    for i, doc in enumerate(results):
-                        m = self._doc_meta(doc)
+                    ranked_preview = self._rerank_rag_candidates(results, col_name, top_k=5)
+                    for i, m in enumerate(ranked_preview):
                         print(f"Result {i+1}:")
                         print(f"  - URI: {m['uri']}")
                         print(f"  - Domain: {m['domain']}, ColumnCode: {m['column_code']}")
-                        print(f"  - Label: {m['label']}, Type: {m['type']}, Range: {m['range']}")
+                        print(
+                            f"  - Label: {m['label']}, Type: {m['type']}, Range: {m['range']}, "
+                            f"Role: {m['role']}, Priority: {m['priority']}, Concept: {m['canonical_concept_id']}"
+                        )
                         print(f"  - Snippet: {m['snippet']}...")
                 print("-------------------------------------------------\n")
             # --- End Debug ---
 
             context += f"\nColumn '{col_name}' candidate terms:\n"
             col_candidates = []
-            seen_uris = set()
-            for doc in results:
-                m = self._doc_meta(doc)
-                if not m["uri"]:
-                    continue
-                if m["uri"] in seen_uris:
-                    continue
-                seen_uris.add(m["uri"])
+            for m in self._rerank_rag_candidates(results, col_name, top_k=5):
                 term_obj = {
                     "uri": m["uri"],
                     "type": m["type"],
@@ -371,6 +437,9 @@ class MultiAgentSystem:
                     "comment": m["comment"],
                     "domain": m["domain"],
                     "range": m["range"],
+                    "role": m["role"],
+                    "priority": m["priority"],
+                    "canonical_concept_id": m["canonical_concept_id"],
                 }
                 col_candidates.append(term_obj)
                 context += f"  - {json.dumps(term_obj, ensure_ascii=False)}\n"
@@ -407,6 +476,7 @@ class MultiAgentSystem:
         规则:
         1. 综合分析列名、样本值与 RAG 上下文。
         2. 若某列存在候选术语，必须从该列候选集合中选择；候选为空时返回 null。
+        2.1 候选中若包含 priority/role 字段，优先选择 priority 更高（P0>P1>P2）且 role 更匹配业务语义的术语。
         3. 若没有 RAG 上下文（即未提供知识库），必须完全基于列名、样本值和表语义进行推断。
         4. 若未启用检索增强且不允许公共本体 URI，请避免使用 schema.org / w3.org / opengis 等公共词表 URI。
         5. 如果扫描到的数据库缺少明确主键/外键信息，请基于列名语义进行实体抽取（识别核心实体相关列）与关系推断（识别疑似关联列）。
@@ -504,6 +574,7 @@ class MultiAgentSystem:
         
         规则:
         1. 确保每个映射对象都语义一致，且包含正确的 uri/type/label/comment/domain/range。
+        1.1 若候选提供 priority/role 信息，优先保留高优先级且角色匹配的候选（P0>P1>P2）。
         2. 若某列是外键或被推断为关系列，应优先映射为对象属性（关系），而不是数据属性。
         3. 当数据库缺少显式主外键时，结合列名语义与上下文，校正实体抽取与关系推断结果。
         4. 若未启用检索增强，不要依赖外部本体，只基于输入数据进行修正。

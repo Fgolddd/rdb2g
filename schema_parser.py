@@ -45,6 +45,9 @@ def _normalize_term(node):
         'comment': str(comment) if comment else "No description.",
         'domain': _extract_refs(domain),
         'range': _extract_refs(range_val),
+        'role': str(node.get('role', '')).strip(),
+        'priority': str(node.get('priority', '')).strip(),
+        'canonical_concept_id': str(node.get('canonical_concept_id', '')).strip(),
     }
     return term_dict
 

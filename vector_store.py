@@ -8,21 +8,19 @@ import hashlib
 from langchain_chroma import Chroma
 
 from langchain_core.documents import Document
-from openai import OpenAI
+from openai import OpenAI, NotFoundError
 
-class DoubaoEmbeddings:
-    """使用豆包 Ark 的 OpenAI 兼容接口实现最小 Embeddings 适配器，
+class QwenEmbeddings:
+    """使用 Qwen(DashScope) 的 OpenAI 兼容接口实现最小 Embeddings 适配器，
     复用 openai 客户端，满足 LangChain 向量库所需接口。
     满足 LangChain 向量库所需的 embed_query / embed_documents 接口。
     """
     def __init__(self, model: str | None = None, api_key: str | None = None, base_url: str | None = None):
-        self.model = model or os.getenv("DOUBAO_EMBEDDING_MODEL")
-        # Ark embedding 接口对单条输入长度有限制，做保守截断避免 400。
-        # 这里采用保守字符上限，避免超长文本触发 400 InvalidParameter。
-        self.max_input_chars = int(os.getenv("DOUBAO_EMBEDDING_MAX_CHARS", "4000"))
+        self.model = model or os.getenv("QWEN_EMBEDDING_MODEL", "text-embedding-v4")
+        self.max_input_chars = int(os.getenv("QWEN_EMBEDDING_MAX_CHARS", "4000"))
         self.client = OpenAI(
-            api_key=api_key or os.getenv("ARK_API_KEY"),
-            base_url=base_url or os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+            api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
+            base_url=base_url or os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         )
 
     def _sanitize_text(self, text: str | None, fallback: str) -> str:
@@ -36,7 +34,13 @@ class DoubaoEmbeddings:
 
     def embed_query(self, text: str):
         cleaned = self._sanitize_text(text, fallback="[empty query]")
-        resp = self.client.embeddings.create(model=self.model, input=cleaned)
+        try:
+            resp = self.client.embeddings.create(model=self.model, input=cleaned)
+        except NotFoundError as e:
+            raise RuntimeError(
+                "Embedding 模型不可用：请将 QWEN_EMBEDDING_MODEL 配置为你账号可用的 DashScope 模型名。"
+                f" 当前值={self.model!r}"
+            ) from e
         return resp.data[0].embedding
 
     def embed_documents(self, texts: list[str]):
@@ -44,11 +48,17 @@ class DoubaoEmbeddings:
             return []
         cleaned_texts = [self._sanitize_text(t, fallback="[empty document]") for t in texts]
         # 按批次请求，降低单次请求体过大导致的失败概率。
-        max_batch = int(os.getenv("DOUBAO_EMBEDDING_BATCH_SIZE", "10"))
+        max_batch = int(os.getenv("QWEN_EMBEDDING_BATCH_SIZE", "10"))
         results = []
         for i in range(0, len(cleaned_texts), max_batch):
             batch = cleaned_texts[i:i+max_batch]
-            resp = self.client.embeddings.create(model=self.model, input=batch)
+            try:
+                resp = self.client.embeddings.create(model=self.model, input=batch)
+            except NotFoundError as e:
+                raise RuntimeError(
+                    "Embedding 模型不可用：请将 QWEN_EMBEDDING_MODEL 配置为你账号可用的 DashScope 模型名。"
+                    f" 当前值={self.model!r}"
+                ) from e
             results.extend([item.embedding for item in resp.data])
         return results
 
@@ -57,11 +67,11 @@ class OntologyVectorStore:
     def __init__(self, persist_dir="./data/chroma_db", enable_retrieval=True):
         self.persist_dir = persist_dir
         self.enable_retrieval = enable_retrieval
-        # 使用豆包 Ark（OpenAI 兼容接口）作为向量嵌入
-        self.embedding_fn = DoubaoEmbeddings()
+        # 使用 Qwen(DashScope)（OpenAI 兼容接口）作为向量嵌入
+        self.embedding_fn = QwenEmbeddings()
         self.vector_db = None
         self.meta_file = "_index_meta.json"
-        self.index_schema_version = 3
+        self.index_schema_version = 4
 
     def _compute_terms_hash(self, schema_terms):
         if not schema_terms:
@@ -105,6 +115,9 @@ class OntologyVectorStore:
         term_type = str(term.get("type", "")).strip()
         range_val = str(term.get("range", "")).strip()
         comment = str(term.get("comment", "")).strip()
+        role = str(term.get("role", "")).strip()
+        priority = str(term.get("priority", "")).strip()
+        canonical_concept_id = str(term.get("canonical_concept_id", "")).strip()
 
         column_code = ""
         if "." in uri:
@@ -121,6 +134,9 @@ class OntologyVectorStore:
             "type": term_type,
             "range": range_val,
             "comment": comment,
+            "role": role,
+            "priority": priority,
+            "canonical_concept_id": canonical_concept_id,
         }
 
     def _build_document_content(self, term, meta):
@@ -131,6 +147,9 @@ class OntologyVectorStore:
             "comment": meta["comment"],
             "domain": meta["domain"],
             "range": meta["range"],
+            "role": meta["role"],
+            "priority": meta["priority"],
+            "canonical_concept_id": meta["canonical_concept_id"],
         }
         return json.dumps(chunk, ensure_ascii=False)
 

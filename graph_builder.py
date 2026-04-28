@@ -1,17 +1,152 @@
 from rdflib import Graph, URIRef, Literal, RDF, Namespace
 from rdflib.namespace import RDFS
 import urllib.parse
+import json
 import pandas as pd
 import re
+from pathlib import Path
+from urllib.parse import urlparse
+from collections import Counter, defaultdict
 
 class RDFGraphBuilder:
-    def __init__(self):
+    def __init__(self, kb_file=None):
         self.g = Graph()
         self.SCHEMA = Namespace("http://schema.org/")
         self.g.bind("schema", self.SCHEMA)
         self.g.bind("rdfs", RDFS)
         self.base_uri = "http://example.org/data/"
         self._declared_terms = set()
+        self.field_display_map, self.table_field_display_map = self._build_display_name_maps(kb_file=kb_file)
+
+    def _extract_tail(self, text):
+        text = str(text or "").strip()
+        if not text:
+            return ""
+        if text.startswith("http://") or text.startswith("https://"):
+            try:
+                tail = urlparse(text).path.rsplit("/", 1)[-1]
+                if tail:
+                    return tail
+            except Exception:
+                pass
+            return text.rsplit("/", 1)[-1]
+        return text
+
+    def _split_table_column(self, uri_or_key, domain_hint=None):
+        tail = self._extract_tail(uri_or_key)
+        table_name = str(domain_hint or "").strip()
+        column_name = tail
+        if "." in tail:
+            left, right = tail.rsplit(".", 1)
+            if left and right:
+                table_name = left
+                column_name = right
+        return table_name, column_name
+
+    def _load_kb_entries(self, kb_file=None):
+        default_kb = Path("data/company/zhongshan_rag_terms.json")
+        kb_path = Path(kb_file) if kb_file else default_kb
+        if not kb_path.exists():
+            return []
+        try:
+            with kb_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return []
+
+        if isinstance(data, list):
+            entries = data
+        elif isinstance(data, dict):
+            if isinstance(data.get("terms"), list):
+                entries = data["terms"]
+            elif isinstance(data.get("@graph"), list):
+                entries = data["@graph"]
+            else:
+                entries = [data]
+        else:
+            entries = []
+        return [entry for entry in entries if isinstance(entry, dict)]
+
+    def _build_display_name_maps(self, kb_file=None):
+        """构建字段中文显示名：优先读取私域知识库，再补充兜底。"""
+        field_counters = defaultdict(Counter)
+        table_field_display_map = {}
+
+        for entry in self._load_kb_entries(kb_file=kb_file):
+            label = str(entry.get("label", "")).strip()
+            if not label:
+                continue
+            domain = str(entry.get("domain", "")).strip()
+            uri = str(entry.get("uri", "")).strip()
+            if not uri:
+                continue
+            table_name, column_name = self._split_table_column(uri, domain_hint=domain)
+            column_name = str(column_name).strip()
+            if not column_name:
+                continue
+            field_counters[column_name][label] += 1
+            field_counters[column_name.lower()][label] += 1
+            if table_name:
+                table_field_display_map[f"{table_name.lower()}.{column_name.lower()}"] = label
+
+        field_display_map = {
+            field: counter.most_common(1)[0][0]
+            for field, counter in field_counters.items()
+            if counter
+        }
+
+        # KB 未覆盖/在本项目需要统一显示的字段兜底
+        field_display_map.setdefault("gid", "记录ID")
+        field_display_map.setdefault("geom", "空间几何")
+        field_display_map.setdefault("Shape_Length", "几何长度")
+        field_display_map.setdefault("Shape_Area", "几何面积")
+        field_display_map.setdefault("S_GUID", "上级系统标识码")
+
+        # 多义字段按 table.column 覆盖（优先级高于知识库和全局）
+        table_field_display_map.update({
+            "zs_mp_bz.dm": "门牌代码",
+            "zs_dh_bz.dm": "楼栋代码",
+            "zs_dy_bz.dm": "单元代码",
+            "zs_fj_bz.dm": "房间代码",
+            "zs_yl_bz.dm": "院落代码",
+            "zs_mp_bz.dhbm": "门牌别名",
+            "zs_dh_bz.dhbm": "栋号别名",
+            "zs_gaj_xq.gadm": "公安组织机构_代码",
+            "zs_gafj_xq.gadm": "公安组织机构_代码",
+            "zs_pcs_xq.gadm": "公安组织机构_代码",
+            "zs_jws_xq.gadm": "公安组织机构_代码",
+            "zs_gaj_xq.gamc": "公安组织机构_名称",
+            "zs_gafj_xq.gamc": "公安组织机构_名称",
+            "zs_pcs_xq.gamc": "公安组织机构_名称",
+            "zs_jws_xq.gamc": "公安组织机构_名称",
+        })
+        return field_display_map, table_field_display_map
+
+    def _field_display_name(self, field_name, table_name=None):
+        field_name = str(field_name).strip()
+        if not field_name:
+            return ""
+        if table_name:
+            key = f"{str(table_name).strip().lower()}.{field_name.lower()}"
+            mapped = self.table_field_display_map.get(key)
+            if mapped:
+                return mapped
+        return self.field_display_map.get(field_name, self.field_display_map.get(field_name.lower(), field_name))
+
+    def _extract_display_title(self, row, table_name, fallback_value):
+        preferred_cols = [
+            "MC", "MPQC", "DZ", "SSMC", "LKMC", "FLMC", "XLMC", "ZLMC", "DLMC", "DM", "gid"
+        ]
+        for col in preferred_cols:
+            if col not in row:
+                continue
+            val = row[col]
+            if pd.isna(val):
+                continue
+            val_text = str(val).strip()
+            if val_text:
+                return val_text
+        return str(fallback_value)
 
     def _infer_referenced_table(self, fk_column_name):
         """
@@ -50,6 +185,14 @@ class RDFGraphBuilder:
         term_uri = URIRef(uri)
         label = str(mapping_value.get("label", "")).strip()
         comment = str(mapping_value.get("comment", "")).strip()
+
+        if not label:
+            tail = uri.rsplit("/", 1)[-1]
+            if "." in tail:
+                table_name, col = tail.rsplit(".", 1)
+                label = self._field_display_name(col, table_name=table_name)
+            else:
+                label = self._field_display_name(tail)
 
         self.g.add((term_uri, RDF.type, RDF.Property))
         if label:
@@ -108,6 +251,10 @@ class RDFGraphBuilder:
 
             # 2. 添加实体类型定义
             self.g.add((subject_uri, RDF.type, self.SCHEMA.Thing))
+
+            display_title = self._extract_display_title(row, table_name, entity_id)
+            self.g.add((subject_uri, self.SCHEMA.name, Literal(display_title, lang="zh")))
+            self.g.add((subject_uri, RDFS.label, Literal(display_title, lang="zh")))
 
             if is_composite and entity_id and "row_" not in entity_id:
                  self.g.add((subject_uri, self.SCHEMA.name, Literal(entity_id)))

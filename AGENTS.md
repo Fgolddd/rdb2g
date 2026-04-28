@@ -6,9 +6,8 @@
 - `run_rdb_kg_eval.py` 负责评测执行：RDB 侧读 `sql_query`，KG 侧读 `sparql_or_graph_query`（但这里必须是 Cypher）。
 
 ## 代理最容易漏掉的环境准备
-- 映射/向量检索必须有 `ARK_API_KEY`（`main.py` 会通过 `.env` 加载）。
-- 常用可选环境变量：`DOUBAO_CHAT_MODEL`、`DOUBAO_EMBEDDING_MODEL`、`DOUBAO_EMBEDDING_BATCH_SIZE`、`DOUBAO_EMBEDDING_MAX_CHARS`、`ARK_BASE_URL`、`DEBUG_RAG_RESULTS`。
-- 为兼容旧配置，代码仍支持读取 `QWEN_*` 与 `DASHSCOPE_API_KEY` 作为兜底。
+- 映射/向量检索必须有 `DASHSCOPE_API_KEY`（`main.py` 会通过 `.env` 加载）。
+- 常用可选环境变量：`QWEN_CHAT_MODEL`、`QWEN_EMBEDDING_MODEL`、`QWEN_EMBEDDING_BATCH_SIZE`、`QWEN_EMBEDDING_MAX_CHARS`、`QWEN_BASE_URL`、`QWEN_ENABLE_THINKING`、`DEBUG_RAG_RESULTS`。
 - `requirements.txt` 不完整；若导入失败，补装运行时依赖（如 `openai`、`neo4j`、`rdflib-neo4j`）。
 
 ## 常用命令（可直接复用）
@@ -34,3 +33,5 @@
 ## 仓库约定
 - 仓库没有现成的 test/lint/typecheck 配置；改动后用你触达的脚本做针对性验证。
 - `.gitignore` 忽略了 `data/`；TTL、评测结果、缓存和索引等产物通常是本地文件。
+- 所有 `python3` 运行命令均在虚拟环境下运行。
+- 每次在 `docs/` 下新增文档时，必须先创建当天日期目录（格式 `YYYY-MM-DD`），并将新文档归档到该日期目录下。

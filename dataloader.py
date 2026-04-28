@@ -67,8 +67,15 @@ class SpiderDataLoader:
                 "null_ratio": round(col_data.isnull().mean(), 2),
             }
             
-            # 提取非空样本并转为字符串
-            sample_values = col_data.dropna().head(k_samples).astype(str).tolist()
+            # 提取非空样本并转为字符串（裁剪超长值，避免提示词超长）
+            sample_values = []
+            for raw in col_data.dropna().head(k_samples).tolist():
+                s = str(raw).strip()
+                if col.lower() == "geom":
+                    s = f"[geom:{len(s)}chars]"
+                elif len(s) > 180:
+                    s = s[:180] + "..."
+                sample_values.append(s)
             stats["samples"] = sample_values
             column_infos.append(stats)
 
@@ -94,5 +101,4 @@ class SpiderDataLoader:
 
     def close(self):
         self.conn.close()
-
 
