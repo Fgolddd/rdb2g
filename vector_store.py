@@ -3,12 +3,36 @@ import re
 import json
 import shutil
 import hashlib
+import time
 # 优先使用新包 langchain-chroma，若未安装则回退到社区版
 
 from langchain_chroma import Chroma
 
 from langchain_core.documents import Document
-from openai import OpenAI, NotFoundError
+from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError, NotFoundError
+from progress_utils import ProgressBar
+
+
+def _env_int(name, default):
+    value = os.getenv(name)
+    if value is None or str(value).strip() == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        print(f"⚠️ 忽略无效整数环境变量 {name}={value!r}")
+        return default
+
+
+def _env_float(name, default):
+    value = os.getenv(name)
+    if value is None or str(value).strip() == "":
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        print(f"⚠️ 忽略无效数字环境变量 {name}={value!r}")
+        return default
 
 class QwenEmbeddings:
     """使用 Qwen(DashScope) 的 OpenAI 兼容接口实现最小 Embeddings 适配器，
@@ -18,10 +42,35 @@ class QwenEmbeddings:
     def __init__(self, model: str | None = None, api_key: str | None = None, base_url: str | None = None):
         self.model = model or os.getenv("QWEN_EMBEDDING_MODEL", "text-embedding-v4")
         self.max_input_chars = int(os.getenv("QWEN_EMBEDDING_MAX_CHARS", "4000"))
+        self.timeout = _env_float("QWEN_EMBEDDING_TIMEOUT", 30.0)
+        self.max_retries = max(_env_int("QWEN_EMBEDDING_MAX_RETRIES", 3), 1)
         self.client = OpenAI(
             api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
             base_url=base_url or os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         )
+
+    def _create_embedding(self, input_data):
+        last_exc = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                return self.client.embeddings.create(
+                    model=self.model,
+                    input=input_data,
+                    timeout=self.timeout,
+                )
+            except NotFoundError as e:
+                raise RuntimeError(
+                    "Embedding 模型不可用：请将 QWEN_EMBEDDING_MODEL 配置为你账号可用的 DashScope 模型名。"
+                    f" 当前值={self.model!r}"
+                ) from e
+            except (APIConnectionError, APITimeoutError, RateLimitError) as e:
+                last_exc = e
+                if attempt >= self.max_retries:
+                    break
+                wait_s = min(2 ** attempt, 20)
+                print(f"⚠️ Embedding 请求失败({type(e).__name__})，{wait_s}s 后重试（{attempt}/{self.max_retries}）...")
+                time.sleep(wait_s)
+        raise last_exc
 
     def _sanitize_text(self, text: str | None, fallback: str) -> str:
         text = "" if text is None else str(text)
@@ -34,13 +83,7 @@ class QwenEmbeddings:
 
     def embed_query(self, text: str):
         cleaned = self._sanitize_text(text, fallback="[empty query]")
-        try:
-            resp = self.client.embeddings.create(model=self.model, input=cleaned)
-        except NotFoundError as e:
-            raise RuntimeError(
-                "Embedding 模型不可用：请将 QWEN_EMBEDDING_MODEL 配置为你账号可用的 DashScope 模型名。"
-                f" 当前值={self.model!r}"
-            ) from e
+        resp = self._create_embedding(cleaned)
         return resp.data[0].embedding
 
     def embed_documents(self, texts: list[str]):
@@ -52,13 +95,7 @@ class QwenEmbeddings:
         results = []
         for i in range(0, len(cleaned_texts), max_batch):
             batch = cleaned_texts[i:i+max_batch]
-            try:
-                resp = self.client.embeddings.create(model=self.model, input=batch)
-            except NotFoundError as e:
-                raise RuntimeError(
-                    "Embedding 模型不可用：请将 QWEN_EMBEDDING_MODEL 配置为你账号可用的 DashScope 模型名。"
-                    f" 当前值={self.model!r}"
-                ) from e
+            resp = self._create_embedding(batch)
             results.extend([item.embedding for item in resp.data])
         return results
 
@@ -208,9 +245,25 @@ class OntologyVectorStore:
             content = self._build_document_content(term, meta)
             docs.append(Document(page_content=content, metadata=meta))
 
-        self.vector_db = Chroma.from_documents(docs, self.embedding_fn, persist_directory=self.persist_dir)
+        batch_size = max(_env_int("VECTOR_INDEX_BATCH_SIZE", 50), 1)
+        index_progress = ProgressBar(total=len(docs), label="向量索引构建", unit="术语", min_interval=1.0)
+        self.vector_db = Chroma(persist_directory=self.persist_dir, embedding_function=self.embedding_fn)
+        for i in range(0, len(docs), batch_size):
+            batch = docs[i:i + batch_size]
+            self.vector_db.add_documents(batch)
+            index_progress.update(step=len(batch), detail=f"batch {i // batch_size + 1}", force=True)
+        index_progress.close()
         self._save_index_meta(current_terms_hash, len(docs))
         print("索引构建完成并已保存。")
+
+    def _similarity_search_by_vector(self, query_vector, query_text, k, filter_data=None):
+        if hasattr(self.vector_db, "similarity_search_by_vector"):
+            return self.vector_db.similarity_search_by_vector(
+                query_vector,
+                k=k,
+                filter=filter_data,
+            )
+        return self.vector_db.similarity_search(query_text, k=k, filter=filter_data)
 
     def search(self, query, k=5, domain=None, column_code=None):
         """语义检索（优先精确列名/域过滤，再回退全局检索）"""
@@ -219,14 +272,16 @@ class OntologyVectorStore:
 
         candidate_batches = []
         fetch_k = max(int(k), 3)
+        query_vector = self.embedding_fn.embed_query(query)
 
         if domain and column_code:
             try:
                 candidate_batches.append(
-                    self.vector_db.similarity_search(
+                    self._similarity_search_by_vector(
+                        query_vector,
                         query,
                         k=fetch_k,
-                        filter={"domain": str(domain), "column_code": str(column_code)},
+                        filter_data={"domain": str(domain), "column_code": str(column_code)},
                     )
                 )
             except Exception:
@@ -235,10 +290,11 @@ class OntologyVectorStore:
         if column_code:
             try:
                 candidate_batches.append(
-                    self.vector_db.similarity_search(
+                    self._similarity_search_by_vector(
+                        query_vector,
                         query,
                         k=fetch_k,
-                        filter={"column_code": str(column_code)},
+                        filter_data={"column_code": str(column_code)},
                     )
                 )
             except Exception:
@@ -247,14 +303,21 @@ class OntologyVectorStore:
         if domain:
             try:
                 candidate_batches.append(
-                    self.vector_db.similarity_search(
+                    self._similarity_search_by_vector(
+                        query_vector,
                         query,
                         k=max(fetch_k, 5),
-                        filter={"domain": str(domain)},
+                        filter_data={"domain": str(domain)},
                     )
                 )
             except Exception:
                 pass
 
-        candidate_batches.append(self.vector_db.similarity_search(query, k=max(fetch_k, 8)))
+        candidate_batches.append(
+            self._similarity_search_by_vector(
+                query_vector,
+                query,
+                k=max(fetch_k, 8),
+            )
+        )
         return self._merge_results(candidate_batches, int(k))

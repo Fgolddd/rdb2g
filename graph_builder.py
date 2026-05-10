@@ -2,21 +2,31 @@ from rdflib import Graph, URIRef, Literal, RDF, Namespace
 from rdflib.namespace import RDFS
 import urllib.parse
 import json
+import time
 import pandas as pd
 import re
 from pathlib import Path
 from urllib.parse import urlparse
 from collections import Counter, defaultdict
+from progress_utils import ProgressBar, format_elapsed
+from ignored_columns import is_ignored_rdf_property
 
 class RDFGraphBuilder:
-    def __init__(self, kb_file=None):
-        self.g = Graph()
+    def __init__(self, kb_file=None, relation_rules=None, entity_index=None):
         self.SCHEMA = Namespace("http://schema.org/")
-        self.g.bind("schema", self.SCHEMA)
-        self.g.bind("rdfs", RDFS)
         self.base_uri = "http://example.org/data/"
+        self.ZS = Namespace("http://example.org/zhongshan/")
+        self.relation_rules = relation_rules
+        self.entity_index = entity_index or {}
         self._declared_terms = set()
         self.field_display_map, self.table_field_display_map = self._build_display_name_maps(kb_file=kb_file)
+        self._reset_graph()
+
+    def _reset_graph(self):
+        self.g = Graph()
+        self.g.bind("schema", self.SCHEMA)
+        self.g.bind("rdfs", RDFS)
+        self.g.bind("zs", self.ZS)
 
     def _extract_tail(self, text):
         text = str(text or "").strip()
@@ -134,6 +144,9 @@ class RDFGraphBuilder:
         return self.field_display_map.get(field_name, self.field_display_map.get(field_name.lower(), field_name))
 
     def _extract_display_title(self, row, table_name, fallback_value):
+        if self.relation_rules:
+            row_dict = self._row_to_dict(row)
+            return self.relation_rules.label_for_row(table_name, row_dict, fallback=fallback_value)
         preferred_cols = [
             "MC", "MPQC", "DZ", "SSMC", "LKMC", "FLMC", "XLMC", "ZLMC", "DLMC", "DM", "gid"
         ]
@@ -147,6 +160,115 @@ class RDFGraphBuilder:
             if val_text:
                 return val_text
         return str(fallback_value)
+
+    def _row_to_dict(self, row):
+        if hasattr(row, "to_dict"):
+            return row.to_dict()
+        if isinstance(row, dict):
+            return row
+        return dict(row)
+
+    def _clean_value(self, value):
+        if value is None:
+            return ""
+        try:
+            if pd.isna(value):
+                return ""
+        except Exception:
+            pass
+        text = str(value).strip()
+        if not text or text.lower() in {"null", "none", "nan"}:
+            return ""
+        return text
+
+    def _subject_uri_for_row(self, table_name, row, fallback_id):
+        if self.relation_rules:
+            row_dict = self._row_to_dict(row)
+            entity_id = self.relation_rules.entity_id_for_row(table_name, row_dict, fallback=fallback_id)
+            return URIRef(self.relation_rules.uri_for_entity(table_name, entity_id)), entity_id
+        safe_entity_id = urllib.parse.quote(str(fallback_id))
+        return URIRef(f"{self.base_uri}{table_name}/{safe_entity_id}"), str(fallback_id)
+
+    def _add_entity_metadata(self, subject_uri, table_name, row, entity_id, display_title):
+        self.g.add((subject_uri, RDF.type, self.SCHEMA.Thing))
+        if self.relation_rules:
+            entity_type = self.relation_rules.entity_type_for_table(table_name)
+            if entity_type:
+                self.g.add((subject_uri, RDF.type, URIRef(self.relation_rules.type_uri(entity_type))))
+                self.g.add((subject_uri, self.ZS.entityType, Literal(entity_type)))
+            self.g.add((subject_uri, self.ZS.sourceTable, Literal(table_name)))
+            self.g.add((subject_uri, self.ZS.entityId, Literal(entity_id)))
+
+        self.g.add((subject_uri, self.SCHEMA.name, Literal(display_title, lang="zh")))
+        self.g.add((subject_uri, RDFS.label, Literal(display_title, lang="zh")))
+
+    def _lookup_entity_uri(self, table_name, key, value):
+        clean = self._clean_value(value)
+        if not clean:
+            return None
+        return self.entity_index.get((str(table_name), str(key), clean))
+
+    def _source_values_for_rule(self, rule, row_dict):
+        split_mode = str(rule.get("match_mode", "exact")) == "split_exact"
+        delimiter = str(rule.get("split_delimiter", ",") or ",")
+        values = []
+        for source_key in self.relation_rules.source_key_candidates(rule):
+            source_value = self._clean_value(row_dict.get(source_key))
+            if not source_value:
+                continue
+            if split_mode:
+                parts = [part.strip() for part in source_value.split(delimiter)]
+                values.extend(part for part in parts if part)
+            else:
+                values.append(source_value)
+        seen = set()
+        result = []
+        for value in values:
+            if value in seen:
+                continue
+            seen.add(value)
+            result.append(value)
+        return result
+
+    def _target_uri_for_rule(self, rule, row_dict):
+        for source_value in self._source_values_for_rule(rule, row_dict):
+            for target_table, target_key in self.relation_rules.target_specs_for_rule(rule, row=row_dict):
+                target_uri = self._lookup_entity_uri(target_table, target_key, source_value)
+                if target_uri:
+                    return target_uri
+        return None
+
+    def _target_uris_for_rule(self, rule, row_dict):
+        target_uris = []
+        seen = set()
+        for source_value in self._source_values_for_rule(rule, row_dict):
+            for target_table, target_key in self.relation_rules.target_specs_for_rule(rule, row=row_dict):
+                target_uri = self._lookup_entity_uri(target_table, target_key, source_value)
+                if not target_uri or target_uri in seen:
+                    continue
+                seen.add(target_uri)
+                target_uris.append(target_uri)
+        return target_uris
+
+    def _add_relation_edges(self, subject_uri, table_name, row_dict):
+        if not self.relation_rules:
+            return 0
+        added = 0
+        for rule in self.relation_rules.relation_rules:
+            if rule.get("enabled") is False:
+                continue
+            if table_name not in (rule.get("source_tables") or []):
+                continue
+            if str(rule.get("match_mode", "exact")) not in {"exact", "split_exact"}:
+                continue
+            target_uris = self._target_uris_for_rule(rule, row_dict)
+            if not target_uris:
+                continue
+            relation_uri = URIRef(self.relation_rules.relation_uri(rule.get("name")))
+            for target_uri in target_uris:
+                self.g.add((subject_uri, relation_uri, URIRef(target_uri)))
+                added += 1
+        return added
 
     def _infer_referenced_table(self, fk_column_name):
         """
@@ -173,6 +295,15 @@ class RDFGraphBuilder:
             uri = mapping_value.strip()
             return uri or None
         return None
+
+    def _predicate_matches_table_column(self, uri, table_name, column_name):
+        if not uri:
+            return False
+        tail = str(uri).strip().rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+        if "." not in tail:
+            return True
+        pred_table, pred_column = tail.rsplit(".", 1)
+        return pred_table == str(table_name).strip() and pred_column == str(column_name).strip()
 
     def _ensure_term_semantics(self, mapping_value):
         """为术语补充最小语义注释（仅一次）"""
@@ -207,19 +338,27 @@ class RDFGraphBuilder:
         将 DataFrame 的每一行转换为 RDF 子图。
         通用化 URI 构建，并增加了防御性代码以确保复合主键的正确性。
         """
-        print(f"🔨 正在为表 '{table_name}' 生成图谱 (包含关系链接)...")
+        started = time.perf_counter()
+        row_total = len(dataframe)
+        print(f"🔨 正在为表 '{table_name}' 生成图谱 (包含关系链接)，行数={row_total}...")
         
         fk_set = {str(col).lower() for col in (foreign_keys or [])}
         fk_ref_map = {}
+        skipped_cross_table_predicates = Counter()
+        relation_edge_counts = Counter()
         for fk_col, ref_table in (foreign_key_refs or {}).items():
             fk_col_str = str(fk_col).strip().lower()
             ref_table_str = str(ref_table).strip().lower()
             if fk_col_str and ref_table_str:
                 fk_ref_map[fk_col_str] = ref_table_str
-        for _, mapping_value in (mapping or {}).items():
-            self._ensure_term_semantics(mapping_value)
+        for col, mapping_value in (mapping or {}).items():
+            term_uri = self._extract_term_uri(mapping_value)
+            if self._predicate_matches_table_column(term_uri, table_name, col):
+                self._ensure_term_semantics(mapping_value)
         
-        for _, row in dataframe.iterrows():
+        row_progress = ProgressBar(total=row_total, label=f"构图 {table_name}", unit="行", min_interval=2.0)
+        for row_num, (row_index, row) in enumerate(dataframe.iterrows(), start=1):
+            row_dict = self._row_to_dict(row)
             # 1. 构建当前行的主语 URI
             entity_id = None
             is_composite = isinstance(primary_key, list) and len(primary_key) > 0
@@ -244,20 +383,19 @@ class RDFGraphBuilder:
                     entity_id = str(row[pk_col])
             
             if not entity_id:
-                entity_id = f"row_{_}"
-            
-            safe_entity_id = urllib.parse.quote(entity_id)
-            subject_uri = URIRef(f"{self.base_uri}{table_name}/{safe_entity_id}")
+                entity_id = f"row_{row_index}"
 
-            # 2. 添加实体类型定义
-            self.g.add((subject_uri, RDF.type, self.SCHEMA.Thing))
+            subject_uri, entity_id = self._subject_uri_for_row(table_name, row_dict, entity_id)
 
             display_title = self._extract_display_title(row, table_name, entity_id)
-            self.g.add((subject_uri, self.SCHEMA.name, Literal(display_title, lang="zh")))
-            self.g.add((subject_uri, RDFS.label, Literal(display_title, lang="zh")))
+            self._add_entity_metadata(subject_uri, table_name, row_dict, entity_id, display_title)
 
             if is_composite and entity_id and "row_" not in entity_id:
                  self.g.add((subject_uri, self.SCHEMA.name, Literal(entity_id)))
+
+            added_edges = self._add_relation_edges(subject_uri, table_name, row_dict)
+            if added_edges:
+                relation_edge_counts[table_name] += added_edges
 
             # 3. 遍历所有列，添加属性三元组
             for col, val in row.items():
@@ -268,6 +406,9 @@ class RDFGraphBuilder:
                 schema_term = self._extract_term_uri(mapping_value)
                 if not schema_term or schema_term.lower() == 'null':
                     continue
+                if not self._predicate_matches_table_column(schema_term, table_name, col):
+                    skipped_cross_table_predicates[f"{col}->{schema_term}"] += 1
+                    continue
 
                 prop_uri_str = schema_term.replace("https://", "http://")
                 if prop_uri_str.startswith("schema:"):
@@ -276,6 +417,8 @@ class RDFGraphBuilder:
                     prop_uri = URIRef(prop_uri_str)
 
                 col_lower = str(col).lower()
+                if is_ignored_rdf_property(col_lower):
+                    continue
                 if col_lower in fk_set:
                     referenced_table = fk_ref_map.get(col_lower) or self._infer_referenced_table(col)
                     referenced_id = urllib.parse.quote(str(val))
@@ -283,7 +426,33 @@ class RDFGraphBuilder:
                     self.g.add((subject_uri, prop_uri, object_uri))
                 else:
                     self.g.add((subject_uri, prop_uri, Literal(val)))
+            row_progress.update(detail=f"row={row_num}")
+        if skipped_cross_table_predicates:
+            examples = ", ".join(
+                f"{key}({count})"
+                for key, count in skipped_cross_table_predicates.most_common(5)
+            )
+            print(f"⚠️ [{table_name}] 跳过跨表谓词 {sum(skipped_cross_table_predicates.values())} 条: {examples}")
+        if relation_edge_counts:
+            print(f"🔗 [{table_name}] 关系边 {sum(relation_edge_counts.values())} 条")
+        row_progress.close(detail=f"完成，耗时 {format_elapsed(time.perf_counter() - started)}")
 
-    def save_graph(self, output_path="knowledge_graph.ttl"):
-        self.g.serialize(destination=output_path, format="turtle")
-        print(f"✅ 知识图谱已保存至: {output_path}")
+    def save_graph(self, output_path="knowledge_graph.ttl", append=False, reset=False):
+        serialized = self.g.serialize(format="turtle")
+        if append:
+            serialized_lines = []
+            for line in serialized.splitlines():
+                if line.startswith("@prefix ") or line.startswith("PREFIX "):
+                    continue
+                serialized_lines.append(line)
+            serialized = "\n".join(serialized_lines).strip()
+            if serialized:
+                serialized = "\n" + serialized + "\n"
+        else:
+            serialized = serialized if serialized.endswith("\n") else serialized + "\n"
+
+        mode = "a" if append else "w"
+        with open(output_path, mode, encoding="utf-8") as f:
+            f.write(serialized)
+        if reset:
+            self._reset_graph()

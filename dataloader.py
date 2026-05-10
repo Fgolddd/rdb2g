@@ -3,6 +3,8 @@ import pandas as pd
 import json
 import os
 
+from ignored_columns import is_ignored_rag_column
+
 class SpiderDataLoader:
     def __init__(self, db_path):
         """初始化加载器，连接 SQLite 数据库"""
@@ -12,6 +14,21 @@ class SpiderDataLoader:
         self.db_path = db_path
         # check_same_thread=False 允许在多线程/Agent环境中使用
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
+
+    def _quote_identifier(self, identifier):
+        safe = str(identifier).replace('"', '""')
+        return f'"{safe}"'
+
+    def get_table_columns(self, table_name):
+        cursor = self.conn.cursor()
+        cursor.execute(f"PRAGMA table_info(`{table_name}`)")
+        return cursor.fetchall()
+
+    def _fetch_scalar(self, sql):
+        cursor = self.conn.cursor()
+        cursor.execute(sql)
+        row = cursor.fetchone()
+        return row[0] if row else None
 
     def get_all_table_names(self):
         """获取数据库中所有非系统表的名称"""
@@ -24,8 +41,7 @@ class SpiderDataLoader:
         """获取表的显式主键/外键约束信息"""
         cursor = self.conn.cursor()
 
-        cursor.execute(f"PRAGMA table_info(`{table_name}`)")
-        table_info = cursor.fetchall()
+        table_info = self.get_table_columns(table_name)
         pk_cols = [(row[5], row[1]) for row in table_info if row[5] > 0]
         explicit_pk = [name for _, name in sorted(pk_cols, key=lambda x: x[0])]
 
@@ -52,24 +68,44 @@ class SpiderDataLoader:
     def generate_table_fingerprint(self, table_name, k_samples=5):
         """生成表的语义指纹：包含列名、类型、统计信息和样本数据"""
         try:
-            df = pd.read_sql_query(f"SELECT * FROM `{table_name}`", self.conn)
+            table_info = self.get_table_columns(table_name)
+            row_count = int(self._fetch_scalar(f"SELECT COUNT(*) FROM `{table_name}`") or 0)
         except Exception as e:
             return {"error": str(e)}
 
+        stats_threshold = int(os.getenv("FINGERPRINT_FULL_SCAN_ROW_THRESHOLD", "50000"))
+        use_full_stats = row_count <= stats_threshold
         column_infos = []
-        for col in df.columns:
-            col_data = df[col]
-            
+        for col_info in table_info:
+            col = col_info[1]
+            if is_ignored_rag_column(col):
+                continue
+
+            quoted_col = self._quote_identifier(col)
             stats = {
                 "name": col,
-                "dtype": str(col_data.dtype),
-                "unique_count": int(col_data.nunique()), # 基数，判断是否为枚举的关键
-                "null_ratio": round(col_data.isnull().mean(), 2),
+                "dtype": str(col_info[2] or "TEXT"),
+                "unique_count": None,
+                "null_ratio": None,
             }
-            
+
+            if use_full_stats:
+                unique_sql = f"SELECT COUNT(DISTINCT {quoted_col}) FROM `{table_name}`"
+                non_null_sql = f"SELECT COUNT({quoted_col}) FROM `{table_name}`"
+                unique_count = self._fetch_scalar(unique_sql)
+                non_null_count = int(self._fetch_scalar(non_null_sql) or 0)
+                stats["unique_count"] = int(unique_count or 0)
+                stats["null_ratio"] = round((row_count - non_null_count) / row_count, 2) if row_count else 0.0
+
             # 提取非空样本并转为字符串（裁剪超长值，避免提示词超长）
             sample_values = []
-            for raw in col_data.dropna().head(k_samples).tolist():
+            sample_sql = (
+                f"SELECT {quoted_col} FROM `{table_name}` "
+                f"WHERE {quoted_col} IS NOT NULL LIMIT {max(int(k_samples), 1)}"
+            )
+            cursor = self.conn.cursor()
+            cursor.execute(sample_sql)
+            for (raw,) in cursor.fetchall():
                 s = str(raw).strip()
                 if col.lower() == "geom":
                     s = f"[geom:{len(s)}chars]"
@@ -85,8 +121,9 @@ class SpiderDataLoader:
         fingerprint = {
             "source": os.path.basename(self.db_path),
             "table_name": table_name,
-            "row_count": len(df),
+            "row_count": row_count,
             "columns": column_infos,
+            "all_columns": [row[1] for row in table_info],
             "table_count": len(all_tables),
             "all_tables": all_tables,
             "explicit_pk": constraints["explicit_pk"],
@@ -95,10 +132,14 @@ class SpiderDataLoader:
         }
         return fingerprint
 
-    def get_dataframe(self, table_name):
-        """获取完整的 DataFrame，用于后续图谱生成"""
-        return pd.read_sql_query(f"SELECT * FROM `{table_name}`", self.conn)
+    def get_dataframe(self, table_name, columns=None, chunksize=None):
+        """按需读取 DataFrame，用于后续图谱生成"""
+        if columns:
+            projected = ", ".join(self._quote_identifier(col) for col in columns)
+        else:
+            projected = "*"
+        sql = f"SELECT {projected} FROM `{table_name}`"
+        return pd.read_sql_query(sql, self.conn, chunksize=chunksize)
 
     def close(self):
         self.conn.close()
-

@@ -159,6 +159,7 @@ def main():
     parser.add_argument("db_path", type=Path, help="SQLite DB path")
     parser.add_argument("--schema-file", type=Path, default=Path("data/schemaorg.jsonld"), help="Schema.org JSON-LD path")
     parser.add_argument("--kb-file", type=Path, default=None, help="Optional private KB JSON path")
+    parser.add_argument("--relation-rules", type=Path, default=None, help="Optional relation rules JSON for KG path edges")
     parser.add_argument("--allow-public-uri", action="store_true", help="Allow public URI in no-knowledge mode")
     parser.add_argument("--question-bank", type=Path, required=True, help="Evaluation question bank CSV path")
     parser.add_argument("--out-dir", type=Path, default=Path("data/eval/full_experiment_run"), help="Evaluation output dir")
@@ -177,6 +178,7 @@ def main():
     db_path = args.db_path.resolve()
     schema_file = args.schema_file.resolve() if args.schema_file else None
     kb_file = args.kb_file.resolve() if args.kb_file else None
+    relation_rules = args.relation_rules.resolve() if args.relation_rules else None
 
     print("[Pipeline] Step 1/3 生成 TTL")
     build_ttl(
@@ -184,6 +186,7 @@ def main():
         kb_file=str(kb_file) if kb_file else None,
         schema_file=str(schema_file) if schema_file else None,
         allow_public_uri=args.allow_public_uri,
+        relation_rules_file=str(relation_rules) if relation_rules else None,
     )
 
     ttl_file = Path("data/ttl") / f"{db_path.stem}.ttl"

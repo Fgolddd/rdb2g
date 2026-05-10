@@ -2,7 +2,33 @@ import os
 import json
 import time
 import urllib.parse
+from datetime import datetime
+from pathlib import Path
 from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
+
+from ignored_columns import is_ignored_rag_column
+
+
+def _env_int(name, default):
+    value = os.getenv(name)
+    if value is None or str(value).strip() == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        print(f"⚠️ 忽略无效整数环境变量 {name}={value!r}")
+        return default
+
+
+def _env_float(name, default):
+    value = os.getenv(name)
+    if value is None or str(value).strip() == "":
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        print(f"⚠️ 忽略无效数字环境变量 {name}={value!r}")
+        return default
 
 class MultiAgentSystem:
     def __init__(self, vector_store=None, allow_public_uri=False, local_uri_base="http://example.org/auto/"):
@@ -12,9 +38,14 @@ class MultiAgentSystem:
             base_url=os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         )
         self.chat_model = os.getenv("QWEN_CHAT_MODEL", "qwen3.5-flash")
-        self.enable_thinking = os.getenv("QWEN_ENABLE_THINKING", "1") == "1"
+        self.chat_timeout = _env_float("QWEN_CHAT_TIMEOUT", 45.0)
+        self.chat_max_retries = max(_env_int("QWEN_CHAT_MAX_RETRIES", 2), 1)
+        self.enable_thinking = os.getenv("QWEN_ENABLE_THINKING", "0") == "1"
         self.vector_store = vector_store
         self.debug_rag = os.getenv("DEBUG_RAG_RESULTS", "0") == "1"
+        self.debug_chat = os.getenv("DEBUG_CHAT_RESULTS", "0") == "1"
+        self.debug_chat_log_request = os.getenv("DEBUG_CHAT_LOG_REQUEST", "0") == "1"
+        self.debug_chat_log_dir = Path(os.getenv("DEBUG_CHAT_LOG_DIR", "data/chat_logs"))
         self.allow_public_uri = allow_public_uri
         self.local_uri_base = local_uri_base.rstrip("/") + "/"
         self.public_uri_prefixes = (
@@ -26,6 +57,75 @@ class MultiAgentSystem:
             "https://www.opengis.net",
         )
         self.rag_candidates_cache = {}
+
+    def _safe_log_name(self, value):
+        return "".join(ch if ch.isalnum() or ch in ("_", "-") else "_" for ch in str(value or "unknown"))
+
+    def _chat_log_path(self, table_name, stage):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"{self._safe_log_name(table_name)}_{self._safe_log_name(stage)}_{timestamp}.json"
+        return self.debug_chat_log_dir / filename
+
+    def _summarize_parsed_json(self, parsed):
+        if isinstance(parsed, dict):
+            return {
+                "json_ok": True,
+                "parsed_type": "dict",
+                "top_level_key_count": len(parsed),
+                "top_level_keys": list(parsed.keys())[:80],
+            }
+        if isinstance(parsed, list):
+            return {
+                "json_ok": True,
+                "parsed_type": "list",
+                "item_count": len(parsed),
+            }
+        return {
+            "json_ok": False,
+            "parsed_type": type(parsed).__name__,
+        }
+
+    def _parse_json_for_debug(self, content):
+        sentinel = object()
+        parsed = self._parse_json_output(content, fallback=sentinel)
+        if parsed is sentinel:
+            return {"json_ok": False, "parsed_type": None}
+        return self._summarize_parsed_json(parsed)
+
+    def _write_chat_debug_log(self, table_name, stage, messages, content=None, elapsed=None, error=None, parse_info=None):
+        if not self.debug_chat:
+            return
+
+        payload = {
+            "stage": stage,
+            "table": table_name,
+            "model": self.chat_model,
+            "timeout": self.chat_timeout,
+            "max_retries": self.chat_max_retries,
+            "enable_thinking": self.enable_thinking,
+            "elapsed_seconds": round(float(elapsed), 3) if elapsed is not None else None,
+            "request": {
+                "message_count": len(messages or []),
+                "messages": messages if self.debug_chat_log_request else None,
+            },
+            "response": {
+                "content": content,
+                "content_length": len(content) if isinstance(content, str) else None,
+            },
+            "parse": parse_info or (self._parse_json_for_debug(content) if content is not None else None),
+            "error": None,
+        }
+        if error is not None:
+            payload["error"] = {
+                "type": type(error).__name__,
+                "message": str(error),
+            }
+
+        self.debug_chat_log_dir.mkdir(parents=True, exist_ok=True)
+        path = self._chat_log_path(table_name, stage)
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        print(f"[{table_name}] {stage} Chat 调试日志: {path}")
 
     def _is_retrieval_enabled(self):
         return bool(self.vector_store is not None and getattr(self.vector_store, "vector_db", None) is not None)
@@ -94,6 +194,72 @@ class MultiAgentSystem:
             normalized.append(term)
         return normalized
 
+    def _uri_tail(self, uri):
+        text = str(uri or "").strip()
+        if not text:
+            return ""
+        text = text.rsplit("#", 1)[-1]
+        return text.rsplit("/", 1)[-1]
+
+    def _candidate_matches_table_column(self, term, table_name, column_name):
+        table = str(table_name or "").strip()
+        column = str(column_name or "").strip()
+        if not isinstance(term, dict) or not table or not column:
+            return False
+
+        domain = str(term.get("domain", "")).strip()
+        if domain and domain != table:
+            return False
+
+        column_code = str(term.get("column_code", "")).strip()
+        if column_code and column_code != column:
+            return False
+
+        tail = self._uri_tail(term.get("uri"))
+        if "." not in tail:
+            return False
+        uri_table, uri_column = tail.rsplit(".", 1)
+        return uri_table == table and uri_column == column
+
+    def _strict_candidates_for_column(self, candidates, table_name, column_name):
+        return [
+            term
+            for term in self._normalize_candidate_list(candidates)
+            if self._candidate_matches_table_column(term, table_name, column_name)
+        ]
+
+    def _strict_rag_candidates(self, table_fingerprint, rag_candidates):
+        table_name = table_fingerprint.get("table_name", "")
+        strict = {}
+        for col in table_fingerprint.get("columns", []):
+            if not isinstance(col, dict):
+                continue
+            col_name = col.get("name")
+            strict[col_name] = self._strict_candidates_for_column(
+                (rag_candidates or {}).get(col_name, []),
+                table_name,
+                col_name,
+            )
+        return strict
+
+    def _mapping_value_matches_table_column(self, value, table_name, column_name):
+        if value is None:
+            return True
+        if not isinstance(value, dict):
+            return False
+        return self._candidate_matches_table_column(value, table_name, column_name)
+
+    def _sanitize_mapping_to_table(self, table_fingerprint, mapping):
+        table_name = table_fingerprint.get("table_name", "")
+        sanitized = {}
+        for col in table_fingerprint.get("columns", []):
+            if not isinstance(col, dict):
+                continue
+            col_name = col.get("name")
+            value = (mapping or {}).get(col_name)
+            sanitized[col_name] = value if self._mapping_value_matches_table_column(value, table_name, col_name) else None
+        return sanitized
+
     def _to_float_or_none(self, value):
         try:
             if value is None or value == "":
@@ -140,6 +306,137 @@ class MultiAgentSystem:
             payload["confidence"] = confidence
         return payload
 
+    def _compact_columns_for_mapping(self, table_fingerprint, sample_limit=2, sample_chars=50):
+        compact = []
+        for col in table_fingerprint.get("columns", []):
+            if not isinstance(col, dict):
+                continue
+            samples = []
+            for sample in col.get("samples", [])[:sample_limit]:
+                text = str(sample).strip()
+                if len(text) > sample_chars:
+                    text = text[:sample_chars] + "..."
+                samples.append(text)
+            compact.append({
+                "name": col.get("name"),
+                "dtype": col.get("dtype"),
+                "unique_count": col.get("unique_count"),
+                "null_ratio": col.get("null_ratio"),
+                "samples": samples,
+            })
+        return {
+            "table": table_fingerprint.get("table_name"),
+            "row_count": table_fingerprint.get("row_count"),
+            "columns": compact,
+        }
+
+    def _compact_columns_for_relation(self, table_fingerprint):
+        compact = []
+        for col in table_fingerprint.get("columns", []):
+            if not isinstance(col, dict):
+                continue
+            compact.append({
+                "name": col.get("name"),
+                "unique_count": col.get("unique_count"),
+                "null_ratio": col.get("null_ratio"),
+            })
+        return {
+            "table": table_fingerprint.get("table_name"),
+            "row_count": table_fingerprint.get("row_count"),
+            "columns": compact,
+            "all_columns": table_fingerprint.get("all_columns", []),
+            "explicit_pk": table_fingerprint.get("explicit_pk", []),
+            "explicit_fks": table_fingerprint.get("explicit_fks", []),
+            "table_count": table_fingerprint.get("table_count", 0),
+        }
+
+    def _compact_rag_candidates(self, rag_candidates, top_k=3):
+        compact = {}
+        for col, candidates in (rag_candidates or {}).items():
+            compact[col] = []
+            for idx, term in enumerate(self._normalize_candidate_list(candidates)[:top_k], start=1):
+                compact[col].append({
+                    "id": idx,
+                    "uri": term.get("uri"),
+                    "label": term.get("label"),
+                    "role": term.get("role"),
+                    "priority": term.get("priority"),
+                    "domain": term.get("domain"),
+                })
+        return compact
+
+    def _pick_term_by_candidate_id(self, value, candidates):
+        normalized = self._normalize_candidate_list(candidates)
+        if not normalized:
+            return None
+        if value is None:
+            return None
+
+        reason = "selected_by_candidate_id"
+        candidate_id = None
+        if isinstance(value, dict):
+            if value.get("uri"):
+                return self._pick_term_from_candidates(value, normalized)
+            reason = str(value.get("reason") or reason).strip()
+            value = value.get("id", value.get("candidate_id", value.get("choice")))
+        if isinstance(value, int):
+            candidate_id = value
+        elif isinstance(value, str):
+            text = value.strip()
+            if not text or text.lower() == "null":
+                return None
+            if text.isdigit():
+                candidate_id = int(text)
+
+        if candidate_id is None or candidate_id < 1 or candidate_id > len(normalized):
+            return None
+
+        payload = dict(normalized[candidate_id - 1])
+        payload["reason"] = reason
+        return payload
+
+    def _normalize_candidate_id_mapping(self, mapping, table_fingerprint, allowed_terms_by_column):
+        if not isinstance(mapping, dict):
+            return {}
+        normalized = {}
+        table_name = table_fingerprint.get("table_name", "")
+        columns = [c.get("name") for c in table_fingerprint.get("columns", []) if isinstance(c, dict)]
+        for col in columns:
+            normalized[col] = self._pick_term_by_candidate_id(
+                mapping.get(col),
+                self._strict_candidates_for_column((allowed_terms_by_column or {}).get(col, []), table_name, col),
+            )
+        return normalized
+
+    def _find_suspicious_mapping_fields(self, table_name, mapping, rag_candidates, max_fields=8):
+        suspicious = {}
+        table_name = str(table_name or "").strip()
+        for col, value in (mapping or {}).items():
+            if len(suspicious) >= max_fields:
+                break
+            reasons = []
+            if value is None:
+                reasons.append("null_mapping")
+            elif isinstance(value, dict):
+                uri = str(value.get("uri", "")).strip()
+                domain = str(value.get("domain", "")).strip()
+                if table_name and uri and f"/zhongshan/{table_name}." not in uri:
+                    reasons.append("uri_table_mismatch")
+                if table_name and domain and domain != table_name:
+                    reasons.append("domain_mismatch")
+                if str(value.get("reason", "")).strip() == "fallback_to_top_candidate":
+                    reasons.append("fallback_mapping")
+            else:
+                reasons.append("invalid_mapping_type")
+            if reasons:
+                strict_candidates = self._strict_candidates_for_column((rag_candidates or {}).get(col, []), table_name, col)
+                suspicious[col] = {
+                    "reasons": reasons,
+                    "selected": value,
+                    "candidates": self._compact_rag_candidates({col: strict_candidates}).get(col, []),
+                }
+        return suspicious
+
     def _normalize_mapping_output(self, mapping, table_fingerprint, allowed_terms_by_column=None):
         """无知识库场景下，按策略过滤公共 URI，避免误用公共本体"""
         if not isinstance(mapping, dict):
@@ -150,7 +447,8 @@ class MultiAgentSystem:
         if self._is_retrieval_enabled() and allowed_terms_by_column:
             normalized = {}
             for col in columns:
-                allowed = self._normalize_candidate_list(allowed_terms_by_column.get(col, []))
+                table_name = table_fingerprint.get("table_name", "")
+                allowed = self._strict_candidates_for_column(allowed_terms_by_column.get(col, []), table_name, col)
                 value = mapping.get(col)
 
                 if not allowed:
@@ -315,7 +613,10 @@ class MultiAgentSystem:
 
     def _normalize_relation_output(self, table_fingerprint, relations):
         """约束优先 + 单表防误判 + 多表受控推断"""
-        columns = {c.get("name") for c in table_fingerprint.get("columns", []) if isinstance(c, dict)}
+        all_columns = table_fingerprint.get("all_columns") or []
+        columns = {str(c).strip() for c in all_columns if str(c).strip()}
+        if not columns:
+            columns = {c.get("name") for c in table_fingerprint.get("columns", []) if isinstance(c, dict)}
         explicit_pk = [c for c in table_fingerprint.get("explicit_pk", []) if c in columns]
         explicit_fks = [c for c in table_fingerprint.get("explicit_fks", []) if c in columns]
         table_count = int(table_fingerprint.get("table_count", 0) or 0)
@@ -356,7 +657,8 @@ class MultiAgentSystem:
 
         return {"pk": pk, "fks": dedup_fks}
 
-    def _chat(self, messages, max_retries=6):
+    def _chat(self, messages, max_retries=None):
+        max_retries = max(int(max_retries or self.chat_max_retries), 1)
         last_exc = None
         for attempt in range(1, max_retries + 1):
             try:
@@ -365,6 +667,7 @@ class MultiAgentSystem:
                     model=self.chat_model,
                     messages=messages,
                     extra_body=extra_body,
+                    timeout=self.chat_timeout,
                 )
                 try:
                     return completion.choices[0].message.content
@@ -380,17 +683,54 @@ class MultiAgentSystem:
                 time.sleep(wait_s)
         raise last_exc
 
+    def _fallback_mapping_from_rag(self, table_fingerprint, rag_candidates):
+        fallback = {}
+        table_name = table_fingerprint.get("table_name", "")
+        for col in table_fingerprint.get("columns", []):
+            if not isinstance(col, dict):
+                continue
+            col_name = col.get("name")
+            candidates = self._strict_candidates_for_column(rag_candidates.get(col_name, []), table_name, col_name)
+            fallback[col_name] = candidates[0] if candidates else None
+        return self._normalize_mapping_output(
+            fallback,
+            table_fingerprint,
+            allowed_terms_by_column=rag_candidates,
+        )
+
+    def _fallback_relations(self, table_fingerprint):
+        all_columns = table_fingerprint.get("all_columns") or []
+        raw_relations = {
+            "pk": None,
+            "fks": table_fingerprint.get("explicit_fks", []),
+        }
+        explicit_pk = table_fingerprint.get("explicit_pk", [])
+        if explicit_pk:
+            raw_relations["pk"] = explicit_pk[0] if len(explicit_pk) == 1 else explicit_pk
+        else:
+            gid_col = next((c for c in all_columns if str(c).strip().lower() == "gid"), None)
+            if gid_col:
+                raw_relations["pk"] = gid_col
+        return self._normalize_relation_output(table_fingerprint, raw_relations)
+
     def _get_rag_context(self, table_fingerprint):
         """为表中的每一列检索 RAG 上下文"""
         if self.vector_store is None or getattr(self.vector_store, "vector_db", None) is None:
             return "", {}
 
+        started = time.perf_counter()
         context = ""
         rag_candidates = {}
         table_data = table_fingerprint
         table_name = str(table_data.get("table_name", ""))
-        for col in table_data.get('columns', []):
+        columns = table_data.get('columns', [])
+        print(f"[{table_name}] RAG 检索开始，列数={len(columns)}")
+        for col_index, col in enumerate(columns, start=1):
             # 检索与 列名+样本 相关的术语
+            col_name = col["name"]
+            if is_ignored_rag_column(col_name):
+                rag_candidates[col_name] = []
+                continue
             raw_samples = col.get('samples', [])[:3]
             clipped_samples = []
             for s in raw_samples:
@@ -399,14 +739,17 @@ class MultiAgentSystem:
                     s = s[:120] + "..."
                 clipped_samples.append(s)
             samples = ", ".join(clipped_samples)
-            col_name = col["name"]
             query = f"Table: {table_name}; Column: {col_name}; Samples: {samples if samples else '[empty]'}"[:500]
-            results = self.vector_store.search(
-                query,
-                k=5,
-                domain=table_name,
-                column_code=col_name,
-            )
+            try:
+                results = self.vector_store.search(
+                    query,
+                    k=5,
+                    domain=table_name,
+                    column_code=col_name,
+                )
+            except Exception as e:
+                print(f"⚠️ [{table_name}] RAG 检索失败 column={col_name}: {type(e).__name__}: {e}")
+                results = []
 
             # --- Debug: 打印检索结果（默认关闭） ---
             if self.debug_rag:
@@ -445,68 +788,80 @@ class MultiAgentSystem:
                 context += f"  - {json.dumps(term_obj, ensure_ascii=False)}\n"
             # 保留顺序去重
             rag_candidates[col_name] = col_candidates
+            if col_index % 5 == 0 or col_index == len(columns):
+                elapsed = time.perf_counter() - started
+                print(f"[{table_name}] RAG 进度 {col_index}/{len(columns)}，elapsed={elapsed:.1f}s")
+        print(f"[{table_name}] RAG 检索完成，耗时 {time.perf_counter() - started:.1f}s")
         return context, rag_candidates
 
     def run_mapping_agent(self, table_fingerprint):
         """Mapping Agent: 映射列到术语标准"""
         print("🤖 Mapping Agent 正在工作...")
-        rag_context, rag_candidates = self._get_rag_context(table_fingerprint)
         table_name = table_fingerprint.get("table_name", "")
+        rag_started = time.perf_counter()
+        _, rag_candidates = self._get_rag_context(table_fingerprint)
+        print(f"[{table_name}] RAG 阶段完成，耗时 {time.perf_counter() - rag_started:.1f}s")
+        rag_candidates = self._strict_rag_candidates(table_fingerprint, rag_candidates)
         self.rag_candidates_cache[table_name] = rag_candidates
         retrieval_enabled = self._is_retrieval_enabled()
+        compact_fingerprint = self._compact_columns_for_mapping(table_fingerprint)
+        compact_candidates = self._compact_rag_candidates(rag_candidates, top_k=3)
         
         system_prompt = (
             "你是一名资深语义映射智能体。"
-            "请将每个列名映射到最合适的标准术语，并仅返回 JSON，不要输出任何额外说明。"
+            "请为每个列名选择最合适的候选术语编号，并仅返回 JSON。"
         )
         user_content = f"""
-        输入数据（表指纹）:
-        {json.dumps(table_fingerprint, ensure_ascii=False)}
+        表字段:
+        {json.dumps(compact_fingerprint, ensure_ascii=False)}
 
-        参考知识（RAG 检索上下文，可能为空）:
-        {rag_context}
-
-        RAG候选术语（按列）:
-        {json.dumps(rag_candidates, ensure_ascii=False)}
+        候选术语（按列，id 为候选编号）:
+        {json.dumps(compact_candidates, ensure_ascii=False)}
 
         当前模式:
         - 已启用检索增强: {retrieval_enabled}
         - 允许输出公共本体 URI: {self.allow_public_uri}
 
         规则:
-        1. 综合分析列名、样本值与 RAG 上下文。
-        2. 若某列存在候选术语，必须从该列候选集合中选择；候选为空时返回 null。
-        2.1 候选中若包含 priority/role 字段，优先选择 priority 更高（P0>P1>P2）且 role 更匹配业务语义的术语。
-        3. 若没有 RAG 上下文（即未提供知识库），必须完全基于列名、样本值和表语义进行推断。
-        4. 若未启用检索增强且不允许公共本体 URI，请避免使用 schema.org / w3.org / opengis 等公共词表 URI。
-        5. 如果扫描到的数据库缺少明确主键/外键信息，请基于列名语义进行实体抽取（识别核心实体相关列）与关系推断（识别疑似关联列）。
-        6. 若无法确定合适映射，使用 null。
-        7. 输出对象格式:
-           {{
-             "列名": {{
-               "uri": "...",
-               "type": "...",
-               "label": "...",
-               "comment": "...",
-               "domain": "...",
-               "range": "...",
-               "reason": "...",
-               "confidence": 0.0-1.0
-             }} 或 null
-           }}
-        
-        仅返回 JSON 对象。
+        1. 只从该列候选中选择；没有候选或无法判断则返回 null。
+        2. 只能选择 domain 等于当前表且 URI 尾部为 当前表.当前列 的候选；其他表候选必须视为不可选。
+        3. 优先 priority 高（P0>P1>P2）、role 与字段语义匹配的候选。
+        4. 输出必须是最小 JSON：{{"列名": 候选id或null}}。
+        5. 不要输出 uri、label、reason、Markdown 代码块或解释文本。
         """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
-        content = self._chat(messages)
+        print(f"[{table_name}] Mapping Chat 开始，timeout={self.chat_timeout:.0f}s，max_retries={self.chat_max_retries}")
+        chat_started = time.perf_counter()
+        try:
+            content = self._chat(messages)
+        except Exception as e:
+            self._write_chat_debug_log(
+                table_name,
+                "mapping",
+                messages,
+                elapsed=time.perf_counter() - chat_started,
+                error=e,
+            )
+            print(f"⚠️ [{table_name}] Mapping Chat 失败，使用 RAG 候选兜底: {type(e).__name__}: {e}")
+            return self._fallback_mapping_from_rag(table_fingerprint, rag_candidates)
+        chat_elapsed = time.perf_counter() - chat_started
+        print(f"[{table_name}] Mapping Chat 完成，耗时 {chat_elapsed:.1f}s")
         raw_mapping = self._parse_json_output(content, fallback={})
-        return self._normalize_mapping_output(
+        self._write_chat_debug_log(
+            table_name,
+            "mapping",
+            messages,
+            content=content,
+            elapsed=chat_elapsed,
+            parse_info=self._summarize_parsed_json(raw_mapping),
+        )
+        return self._normalize_candidate_id_mapping(
             raw_mapping,
             table_fingerprint,
-            allowed_terms_by_column=rag_candidates,
+            rag_candidates,
         )
 
     def run_relation_agent(self, table_fingerprint):
@@ -515,42 +870,51 @@ class MultiAgentSystem:
         explicit_pk = table_fingerprint.get("explicit_pk", [])
         explicit_fks = table_fingerprint.get("explicit_fks", [])
         table_count = table_fingerprint.get("table_count", 0)
-        system_prompt = (
-            "请分析表结构以识别主键（PK）与外键（FK）。"
-            "PK 可能是单列，也可能是复合主键。"
-            "若数据库中缺少明确主外键约束，请基于列名进行实体抽取和关系推断。"
-            "只返回最小化 JSON 对象。"
-        )
+        compact_relation_data = self._compact_columns_for_relation(table_fingerprint)
+        system_prompt = "请根据表结构识别 PK/FK，只返回最小 JSON。"
         user_content = f"""
-        表数据:
-        {json.dumps(table_fingerprint, ensure_ascii=False)}
+        表结构统计:
+        {json.dumps(compact_relation_data, ensure_ascii=False)}
 
-        已知显式约束:
-        - explicit_pk: {json.dumps(explicit_pk, ensure_ascii=False)}
-        - explicit_fks: {json.dumps(explicit_fks, ensure_ascii=False)}
-        - table_count: {table_count}
+        显式约束: pk={json.dumps(explicit_pk, ensure_ascii=False)}, fks={json.dumps(explicit_fks, ensure_ascii=False)}, table_count={table_count}
 
         规则:
-        0. 如果 explicit_pk / explicit_fks 已给出，优先沿用这些显式约束。
-        1. 主键（PK）必须是唯一标识一行数据的最小列集合，不得包含冗余列。
-        2. 以 "_id" 结尾或包含 "id" 语义的列，是 PK/FK 的强候选。
-        3. 关键限制：描述性字段（如名称、标题）、度量字段（如价格、数量）以及日期时间字段（如 Date）不能作为 PK。
-        4. 若 PK 为单列，"pk" 返回字符串；若为复合主键，"pk" 返回列名列表。
-        5. 若没有明确 PK，"pk" 返回 null。
-        6. 若 table_count=1 且 explicit_fks 为空，"fks" 必须返回空列表。
-        7. "fks" 需包含可确定或可推断的关系列；仅在多表且存在跨表证据时才能推断外键。
-        8. 若无法识别任何关系列，"fks" 返回空列表。
-
-        只返回最小化 JSON 对象。
-        - 单列主键示例: {{ \"pk\": \"some_id\", \"fks\": [\"col_a\", \"col_b\"] }}
-        - 复合主键示例: {{ \"pk\": [\"part1_id\", \"part2_id\"], \"fks\": [\"col_c\"] }}
+        1. 显式约束优先。
+        2. PK 必须最小且能唯一标识行；描述、分类、时间字段不能作为 PK。
+        3. 无法确定 PK 返回 null。
+        4. FK 只返回可确定的关系列；无法识别返回空列表。
+        5. 只返回 JSON：{{"pk": "列名"或["列名"]或null, "fks": ["列名"]}}
         """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
-        content = self._chat(messages)
+        table_name = table_fingerprint.get("table_name", "")
+        print(f"[{table_name}] Relation Chat 开始，timeout={self.chat_timeout:.0f}s，max_retries={self.chat_max_retries}")
+        chat_started = time.perf_counter()
+        try:
+            content = self._chat(messages)
+        except Exception as e:
+            self._write_chat_debug_log(
+                table_name,
+                "relation",
+                messages,
+                elapsed=time.perf_counter() - chat_started,
+                error=e,
+            )
+            print(f"⚠️ [{table_name}] Relation Chat 失败，使用显式约束/gid兜底: {type(e).__name__}: {e}")
+            return self._fallback_relations(table_fingerprint)
+        chat_elapsed = time.perf_counter() - chat_started
+        print(f"[{table_name}] Relation Chat 完成，耗时 {chat_elapsed:.1f}s")
         raw_relations = self._parse_json_output(content, fallback={})
+        self._write_chat_debug_log(
+            table_name,
+            "relation",
+            messages,
+            content=content,
+            elapsed=chat_elapsed,
+            parse_info=self._summarize_parsed_json(raw_relations),
+        )
         return self._normalize_relation_output(table_fingerprint, raw_relations)
 
     def run_validator_agent(self, table_fingerprint, mapping, relations):
@@ -558,44 +922,75 @@ class MultiAgentSystem:
         print("🕵️ Validator Agent 正在审查...")
         table_name = table_fingerprint.get("table_name", "")
         rag_candidates = self.rag_candidates_cache.get(table_name, {})
+        suspicious = self._find_suspicious_mapping_fields(table_name, mapping, rag_candidates)
+        if not suspicious:
+            print(f"[{table_name}] Validator 跳过：未发现可疑映射")
+            return self._sanitize_mapping_to_table(table_fingerprint, mapping)
+
+        normalized = self._sanitize_mapping_to_table(table_fingerprint, mapping)
+        llm_suspicious = {}
+        for col, payload in suspicious.items():
+            reasons = set(payload.get("reasons", []))
+            candidates = payload.get("candidates", [])
+            if ("domain_mismatch" in reasons or "uri_table_mismatch" in reasons) and not candidates:
+                normalized[col] = None
+                continue
+            llm_suspicious[col] = payload
+
+        if not llm_suspicious:
+            print(f"[{table_name}] Validator 跳过：跨表可疑字段已按规则置空")
+            return normalized
+
         system_prompt = (
             "你是一名知识图谱质量审查专家。"
-            "请审查并修正映射结果，仅返回最小化 JSON 映射对象。"
+            "只审查给出的可疑字段，并返回候选编号 JSON。"
         )
-        has_rag = self._is_retrieval_enabled()
         user_content = f"""
         表名: {table_fingerprint['table_name']}
-        候选映射: {json.dumps(mapping, ensure_ascii=False)}
         候选关系: {json.dumps(relations, ensure_ascii=False)}
-        RAG候选术语（按列）: {json.dumps(rag_candidates, ensure_ascii=False)}
-        已启用检索增强: {has_rag}
-        显式外键: {json.dumps(table_fingerprint.get('explicit_fks', []), ensure_ascii=False)}
-        表数量: {table_fingerprint.get('table_count', 0)}
-        
+        可疑字段:
+        {json.dumps(llm_suspicious, ensure_ascii=False)}
+
         规则:
-        1. 确保每个映射对象都语义一致，且包含正确的 uri/type/label/comment/domain/range。
-        1.1 若候选提供 priority/role 信息，优先保留高优先级且角色匹配的候选（P0>P1>P2）。
-        2. 若某列是外键或被推断为关系列，应优先映射为对象属性（关系），而不是数据属性。
-        3. 当数据库缺少显式主外键时，结合列名语义与上下文，校正实体抽取与关系推断结果。
-        4. 若未启用检索增强，不要依赖外部本体，只基于输入数据进行修正。
-        4.1 若某列存在 RAG 候选术语，最终值必须取自该列候选集合；否则返回 null。
-        5. 若 table_count=1 且显式外键为空，不要把普通属性列修正成关系列。
-        6. 若某列映射语义未改变，尽量保留已有 reason 字段；若发生修正，给出新的 reason。
-        7. 输出格式与输入映射一致：每列值为术语对象或 null。
-        
-        仅输出最终修正后的 JSON 映射。
+        1. 只从可疑字段的 candidates 中选择。
+        2. candidates 均已过滤为同表同列候选；无 candidates 时必须返回 null。
+        3. 优先 role/priority 与字段语义匹配。
+        4. 无合适候选返回 null。
+        5. 只返回 JSON：{{"列名": 候选id或null}}，不要输出 Markdown 代码块。
         """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
-        content = self._chat(messages)
+        print(f"[{table_name}] Validator Chat 开始，timeout={self.chat_timeout:.0f}s，max_retries={self.chat_max_retries}")
+        chat_started = time.perf_counter()
+        try:
+            content = self._chat(messages)
+        except Exception as e:
+            self._write_chat_debug_log(
+                table_name,
+                "validator",
+                messages,
+                elapsed=time.perf_counter() - chat_started,
+                error=e,
+            )
+            print(f"⚠️ [{table_name}] Validator Chat 失败，沿用候选映射: {type(e).__name__}: {e}")
+            return normalized
+        chat_elapsed = time.perf_counter() - chat_started
+        print(f"[{table_name}] Validator Chat 完成，耗时 {chat_elapsed:.1f}s")
         raw_mapping = self._parse_json_output(content, fallback={})
-        normalized = self._normalize_mapping_output(
-            raw_mapping,
-            table_fingerprint,
-            allowed_terms_by_column=rag_candidates,
+        self._write_chat_debug_log(
+            table_name,
+            "validator",
+            messages,
+            content=content,
+            elapsed=chat_elapsed,
+            parse_info=self._summarize_parsed_json(raw_mapping),
         )
+        revised = self._normalize_candidate_id_mapping(raw_mapping, table_fingerprint, rag_candidates)
+        for col in llm_suspicious:
+            if col in revised:
+                normalized[col] = revised[col]
         # 若审查结果未返回 reason，则尽量沿用上一轮映射的 reason
         for col, value in normalized.items():
             if not isinstance(value, dict):
