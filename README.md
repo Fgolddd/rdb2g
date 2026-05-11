@@ -10,16 +10,17 @@
 - 支持一键全流程：生成 TTL、导入 Neo4j、执行 RDB vs KG 评测
 - 当前重点数据集：`data/company/zhongshan.sqlite`
 
-## 核心文件
+## 核心结构
 
-- `main.py`：主入口，负责 TTL 构建
-- `agents.py`：Mapping / Relation / Validator 多智能体逻辑
-- `vector_store.py`：Qwen Embedding + Chroma 向量检索
-- `graph_builder.py`：RDF 三元组构建与 TTL 序列化
-- `dataloader.py`：SQLite 数据读取与表指纹生成
-- `schema_parser.py`：Schema.org / 私域 KB 解析
-- `run_full_experiment.py`：全流程编排（TTL -> Neo4j -> Eval）
-- `run_rdb_kg_eval.py`：评测执行（RDB SQL vs KG Cypher）
+- `rdb2g/cli/`：命令行入口，包含 TTL 构建、全流程实验和评测入口
+- `rdb2g/pipeline/`：TTL 构建编排、映射缓存、列选择、关系索引
+- `rdb2g/mapping/`：Mapping / Relation / Validator 多智能体逻辑
+- `rdb2g/retrieval/`：Qwen Embedding、Chroma 向量检索、Schema.org / 私域 KB 解析
+- `rdb2g/graph/`：RDF 三元组构建、TTL 序列化、关系规则
+- `rdb2g/data/`：SQLite 数据读取与表指纹生成
+- `rdb2g/neo4j/`：TTL 导入 Neo4j 与展示字段增强
+- `rdb2g/eval/`：RDB SQL vs KG Cypher 评测执行
+- `scripts/`：一次性或数据转换辅助脚本
 
 ## 环境准备
 
@@ -68,7 +69,7 @@ Neo4j（导入/评测）：
 ### 1) 基于中山市数据生成 TTL（推荐）
 
 ```bash
-python3 main.py "data/company/zhongshan.sqlite" --kb-file "data/company/zhongshan_rag_terms.json"
+python3 -m rdb2g.cli.build_ttl "data/company/zhongshan.sqlite" --kb-file "data/company/zhongshan_rag_terms.json" --relation-rules "data/company/zhongshan_relation_rules.json"
 ```
 
 输出示例：`data/ttl/zhongshan.ttl`
@@ -76,19 +77,19 @@ python3 main.py "data/company/zhongshan.sqlite" --kb-file "data/company/zhongsha
 ### 2) 无知识库模式
 
 ```bash
-python3 main.py "data/company/zhongshan.sqlite" --allow-public-uri
+python3 -m rdb2g.cli.build_ttl "data/company/zhongshan.sqlite" --allow-public-uri
 ```
 
 ### 3) 一键全流程（TTL -> Neo4j -> 评测）
 
 ```bash
-python3 run_full_experiment.py "data/company/zhongshan.sqlite" --question-bank "docs/2026-04-09/rdb_vs_kg_eval_sample_cases_100.csv" --engine both
+python3 -m rdb2g.cli.full_experiment "data/company/zhongshan.sqlite" --question-bank "docs/2026-04-09/rdb_vs_kg_eval_sample_cases_100.csv" --engine both
 ```
 
 ### 4) 仅执行评测
 
 ```bash
-python3 run_rdb_kg_eval.py --question-bank "docs/2026-04-09/rdb_vs_kg_eval_sample_cases_100.csv" --db-path "data/company/zhongshan.sqlite" --engine both --out-dir "data/eval/zhongshan_eval"
+python3 -m rdb2g.cli.rdb_kg_eval --question-bank "docs/2026-04-09/rdb_vs_kg_eval_sample_cases_100.csv" --db-path "data/company/zhongshan.sqlite" --engine both --out-dir "data/eval/zhongshan_eval"
 ```
 
 ## 数据与缓存说明
@@ -100,7 +101,7 @@ python3 run_rdb_kg_eval.py --question-bank "docs/2026-04-09/rdb_vs_kg_eval_sampl
 
 ## 评测输入规范（重要）
 
-`run_rdb_kg_eval.py` 中：
+`rdb2g.cli.rdb_kg_eval` 中：
 
 - RDB 查询读取列：`sql_query`
 - KG 查询读取列：`sparql_or_graph_query`，但必须写 Cypher

@@ -8,8 +8,8 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 from collections import Counter, defaultdict
-from progress_utils import ProgressBar, format_elapsed
-from ignored_columns import is_ignored_rdf_property
+from rdb2g.common.progress import ProgressBar, format_elapsed
+from rdb2g.common.ignored_columns import is_ignored_rdf_property
 
 class RDFGraphBuilder:
     def __init__(self, kb_file=None, relation_rules=None, entity_index=None):

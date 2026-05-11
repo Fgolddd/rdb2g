@@ -10,29 +10,9 @@ from langchain_chroma import Chroma
 
 from langchain_core.documents import Document
 from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError, NotFoundError
-from progress_utils import ProgressBar
+from rdb2g.common.env import env_float, env_int
+from rdb2g.common.progress import ProgressBar
 
-
-def _env_int(name, default):
-    value = os.getenv(name)
-    if value is None or str(value).strip() == "":
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        print(f"⚠️ 忽略无效整数环境变量 {name}={value!r}")
-        return default
-
-
-def _env_float(name, default):
-    value = os.getenv(name)
-    if value is None or str(value).strip() == "":
-        return default
-    try:
-        return float(value)
-    except ValueError:
-        print(f"⚠️ 忽略无效数字环境变量 {name}={value!r}")
-        return default
 
 class QwenEmbeddings:
     """使用 Qwen(DashScope) 的 OpenAI 兼容接口实现最小 Embeddings 适配器，
@@ -42,8 +22,8 @@ class QwenEmbeddings:
     def __init__(self, model: str | None = None, api_key: str | None = None, base_url: str | None = None):
         self.model = model or os.getenv("QWEN_EMBEDDING_MODEL", "text-embedding-v4")
         self.max_input_chars = int(os.getenv("QWEN_EMBEDDING_MAX_CHARS", "4000"))
-        self.timeout = _env_float("QWEN_EMBEDDING_TIMEOUT", 30.0)
-        self.max_retries = max(_env_int("QWEN_EMBEDDING_MAX_RETRIES", 3), 1)
+        self.timeout = env_float("QWEN_EMBEDDING_TIMEOUT", 30.0)
+        self.max_retries = max(env_int("QWEN_EMBEDDING_MAX_RETRIES", 3), 1)
         self.client = OpenAI(
             api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
             base_url=base_url or os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
@@ -245,7 +225,7 @@ class OntologyVectorStore:
             content = self._build_document_content(term, meta)
             docs.append(Document(page_content=content, metadata=meta))
 
-        batch_size = max(_env_int("VECTOR_INDEX_BATCH_SIZE", 50), 1)
+        batch_size = max(env_int("VECTOR_INDEX_BATCH_SIZE", 50), 1)
         index_progress = ProgressBar(total=len(docs), label="向量索引构建", unit="术语", min_interval=1.0)
         self.vector_db = Chroma(persist_directory=self.persist_dir, embedding_function=self.embedding_fn)
         for i in range(0, len(docs), batch_size):

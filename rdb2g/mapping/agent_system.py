@@ -4,43 +4,19 @@ import time
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
-from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
 
-from ignored_columns import is_ignored_rag_column
+from rdb2g.common.ignored_columns import is_ignored_rag_column
+from rdb2g.mapping.chat_client import QwenChatClient
+from rdb2g.mapping.json_utils import parse_json_for_debug, parse_json_output, summarize_parsed_json
 
-
-def _env_int(name, default):
-    value = os.getenv(name)
-    if value is None or str(value).strip() == "":
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        print(f"⚠️ 忽略无效整数环境变量 {name}={value!r}")
-        return default
-
-
-def _env_float(name, default):
-    value = os.getenv(name)
-    if value is None or str(value).strip() == "":
-        return default
-    try:
-        return float(value)
-    except ValueError:
-        print(f"⚠️ 忽略无效数字环境变量 {name}={value!r}")
-        return default
 
 class MultiAgentSystem:
     def __init__(self, vector_store=None, allow_public_uri=False, local_uri_base="http://example.org/auto/"):
-        # 使用 Qwen(DashScope) 的 OpenAI 兼容接口
-        self.client = OpenAI(
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url=os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-        )
-        self.chat_model = os.getenv("QWEN_CHAT_MODEL", "qwen3.5-flash")
-        self.chat_timeout = _env_float("QWEN_CHAT_TIMEOUT", 45.0)
-        self.chat_max_retries = max(_env_int("QWEN_CHAT_MAX_RETRIES", 2), 1)
-        self.enable_thinking = os.getenv("QWEN_ENABLE_THINKING", "0") == "1"
+        self.chat_client = QwenChatClient()
+        self.chat_model = self.chat_client.model
+        self.chat_timeout = self.chat_client.timeout
+        self.chat_max_retries = self.chat_client.max_retries
+        self.enable_thinking = self.chat_client.enable_thinking
         self.vector_store = vector_store
         self.debug_rag = os.getenv("DEBUG_RAG_RESULTS", "0") == "1"
         self.debug_chat = os.getenv("DEBUG_CHAT_RESULTS", "0") == "1"
@@ -67,30 +43,10 @@ class MultiAgentSystem:
         return self.debug_chat_log_dir / filename
 
     def _summarize_parsed_json(self, parsed):
-        if isinstance(parsed, dict):
-            return {
-                "json_ok": True,
-                "parsed_type": "dict",
-                "top_level_key_count": len(parsed),
-                "top_level_keys": list(parsed.keys())[:80],
-            }
-        if isinstance(parsed, list):
-            return {
-                "json_ok": True,
-                "parsed_type": "list",
-                "item_count": len(parsed),
-            }
-        return {
-            "json_ok": False,
-            "parsed_type": type(parsed).__name__,
-        }
+        return summarize_parsed_json(parsed)
 
     def _parse_json_for_debug(self, content):
-        sentinel = object()
-        parsed = self._parse_json_output(content, fallback=sentinel)
-        if parsed is sentinel:
-            return {"json_ok": False, "parsed_type": None}
-        return self._summarize_parsed_json(parsed)
+        return parse_json_for_debug(content)
 
     def _write_chat_debug_log(self, table_name, stage, messages, content=None, elapsed=None, error=None, parse_info=None):
         if not self.debug_chat:
@@ -135,30 +91,7 @@ class MultiAgentSystem:
         return f"{self.local_uri_base}{safe}"
 
     def _parse_json_output(self, content, fallback):
-        if isinstance(content, (dict, list)):
-            return content
-        if not isinstance(content, str):
-            return fallback
-
-        candidates = [content.strip()]
-        if "```" in content:
-            start = content.find("```json")
-            if start != -1:
-                start = content.find("\n", start)
-                end = content.find("```", start + 1) if start != -1 else -1
-                if start != -1 and end != -1:
-                    candidates.append(content[start + 1:end].strip())
-
-        l_brace, r_brace = content.find("{"), content.rfind("}")
-        if l_brace != -1 and r_brace != -1 and r_brace > l_brace:
-            candidates.append(content[l_brace:r_brace + 1])
-
-        for text in candidates:
-            try:
-                return json.loads(text)
-            except Exception:
-                continue
-        return fallback
+        return parse_json_output(content, fallback)
 
     def _normalize_term_candidate(self, item):
         if not isinstance(item, dict):
@@ -658,30 +591,7 @@ class MultiAgentSystem:
         return {"pk": pk, "fks": dedup_fks}
 
     def _chat(self, messages, max_retries=None):
-        max_retries = max(int(max_retries or self.chat_max_retries), 1)
-        last_exc = None
-        for attempt in range(1, max_retries + 1):
-            try:
-                extra_body = {"enable_thinking": True} if self.enable_thinking else None
-                completion = self.client.chat.completions.create(
-                    model=self.chat_model,
-                    messages=messages,
-                    extra_body=extra_body,
-                    timeout=self.chat_timeout,
-                )
-                try:
-                    return completion.choices[0].message.content
-                except Exception:
-                    # 回退：直接返回完整 JSON 字符串，便于排错
-                    return json.dumps(completion.model_dump(), ensure_ascii=False)
-            except (APIConnectionError, APITimeoutError, RateLimitError) as e:
-                last_exc = e
-                if attempt >= max_retries:
-                    break
-                wait_s = min(2 ** attempt, 30)
-                print(f"⚠️ Chat 请求失败({type(e).__name__})，{wait_s}s 后重试（{attempt}/{max_retries}）...")
-                time.sleep(wait_s)
-        raise last_exc
+        return self.chat_client.complete(messages, max_retries=max_retries)
 
     def _fallback_mapping_from_rag(self, table_fingerprint, rag_candidates):
         fallback = {}

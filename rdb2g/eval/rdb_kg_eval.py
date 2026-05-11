@@ -383,25 +383,25 @@ def main():
     parser.add_argument(
         "--neo4j-uri",
         type=str,
-        default=os.getenv("NEO4J_URI", "neo4j+s://35dae612.databases.neo4j.io"),
+        default=os.getenv("NEO4J_URI"),
         help="Neo4j URI for KG evaluation.",
     )
     parser.add_argument(
         "--neo4j-database",
         type=str,
-        default=os.getenv("NEO4J_DATABASE", "35dae612"),
+        default=os.getenv("NEO4J_DATABASE"),
         help="Neo4j database name.",
     )
     parser.add_argument(
         "--neo4j-user",
         type=str,
-        default=os.getenv("NEO4J_USER", "35dae612"),
+        default=os.getenv("NEO4J_USER"),
         help="Neo4j username.",
     )
     parser.add_argument(
         "--neo4j-pwd",
         type=str,
-        default=os.getenv("NEO4J_PWD", "snbSppE_EKE6RDjFMuWbHuQgQ9p8go_70IoW3BaPD0A"),
+        default=os.getenv("NEO4J_PWD"),
         help="Neo4j password.",
     )
     parser.add_argument(
