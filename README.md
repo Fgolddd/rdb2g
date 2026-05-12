@@ -7,12 +7,12 @@
 - 主流程已打通：`SQLite -> 表指纹 -> 多智能体映射 -> TTL`
 - 支持两种知识模式：私域知识库模式（`--kb-file`）与无知识库模式
 - 支持映射缓存与并行处理（大库可显著提速）
-- 支持一键全流程：生成 TTL、导入 Neo4j、执行 RDB vs KG 评测
+- 支持分步执行：生成 TTL、导入 Neo4j、执行 RDB vs KG 评测
 - 当前重点数据集：`data/company/zhongshan.sqlite`
 
 ## 核心结构
 
-- `rdb2g/cli/`：命令行入口，包含 TTL 构建、全流程实验和评测入口
+- `rdb2g/cli/`：命令行入口，包含 TTL 构建、Neo4j 导入、评测和规则生成入口
 - `rdb2g/pipeline/`：TTL 构建编排、映射缓存、列选择、关系索引
 - `rdb2g/mapping/`：Mapping / Relation / Validator 多智能体逻辑
 - `rdb2g/retrieval/`：Qwen Embedding、Chroma 向量检索、Schema.org / 私域 KB 解析
@@ -80,17 +80,27 @@ python3 -m rdb2g.cli.build_ttl "data/company/zhongshan.sqlite" --kb-file "data/c
 python3 -m rdb2g.cli.build_ttl "data/company/zhongshan.sqlite" --allow-public-uri
 ```
 
-### 3) 一键全流程（TTL -> Neo4j -> 评测）
+### 3) 导入 TTL 到 Neo4j
 
 ```bash
-python3 -m rdb2g.cli.full_experiment "data/company/zhongshan.sqlite" --question-bank "docs/2026-04-09/rdb_vs_kg_eval_sample_cases_100.csv" --engine both
+python3 -m rdb2g.cli.import_neo4j "data/ttl/zhongshan.ttl"
 ```
 
-### 4) 仅执行评测
+### 4) 执行 RDB vs KG 评测
 
 ```bash
 python3 -m rdb2g.cli.rdb_kg_eval --question-bank "docs/2026-04-09/rdb_vs_kg_eval_sample_cases_100.csv" --db-path "data/company/zhongshan.sqlite" --engine both --out-dir "data/eval/zhongshan_eval"
 ```
+
+推荐分步流程：先用 `rdb2g.cli.build_ttl` 生成 TTL，再用 `rdb2g.cli.import_neo4j` 导入 Neo4j，最后用 `rdb2g.cli.rdb_kg_eval` 对比 SQL 与 Cypher 查询效率。
+
+### 5) 从 0 生成关系规则草案
+
+```bash
+python3 -m rdb2g.cli.build_relation_rules "data/company/zhongshan_10k.sqlite" --kb-file "data/company/zhongshan_rag_terms.json" --out "data/company/zhongshan_relation_rules.generated.json" --report "data/company/zhongshan_relation_rules.report.json" --auto-accept-strong --min-hit-rate 0.8 --sample-size 10000
+```
+
+说明：`generated.json` 可作为 `--relation-rules` 输入，`report.json` 用于审查命中率、自环、fanout 和样例。
 
 ## 数据与缓存说明
 
@@ -98,6 +108,7 @@ python3 -m rdb2g.cli.rdb_kg_eval --question-bank "docs/2026-04-09/rdb_vs_kg_eval
 - 向量索引：`data/chroma_db/<prefix>_<kb_or_schema_name>/`（知识库哈希或 schema 版本变化会触发重建）
 - TTL 产物：`data/ttl/<db_stem>.ttl`
 - 评测结果：`data/eval/<run_name>/`
+- 自动关系规则草案：`data/company/*relation_rules.generated.json` 与验证报告 `*relation_rules.report.json`
 
 ## 评测输入规范（重要）
 

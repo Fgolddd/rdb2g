@@ -266,7 +266,10 @@ class RDFGraphBuilder:
                 continue
             relation_uri = URIRef(self.relation_rules.relation_uri(rule.get("name")))
             for target_uri in target_uris:
-                self.g.add((subject_uri, relation_uri, URIRef(target_uri)))
+                target_ref = URIRef(target_uri)
+                if subject_uri == target_ref:
+                    continue
+                self.g.add((subject_uri, relation_uri, target_ref))
                 added += 1
         return added
 
