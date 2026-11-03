@@ -9,7 +9,13 @@ from pathlib import Path
 from collections import Counter, defaultdict
 from urllib.parse import urlparse
 
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
+
+from rdb2g.common.progress import ProgressBar
+
+
+load_dotenv()
 
 
 _FIELD_DISPLAY_MAP = None
@@ -178,29 +184,58 @@ def is_executable_query(query: str) -> bool:
     return bool(query) and not query.startswith("--")
 
 
-def run_rdb_eval(cases, db_path: Path):
+def _compact_query(query: str, limit: int = 160) -> str:
+    text = re.sub(r"\s+", " ", (query or "").strip())
+    if len(text) <= limit:
+        return text
+    return text[: max(limit - 3, 0)] + "..."
+
+
+def _case_label(case, status: str, latency_ms, row_count=None, error_type="") -> str:
+    parts = [str(case.get("id", "")), str(case.get("task_type", "")), status]
+    if error_type:
+        parts.append(str(error_type))
+    parts.append(f"{latency_ms}ms")
+    if row_count is not None:
+        parts.append(f"rows={row_count}")
+    return " ".join(part for part in parts if part)
+
+
+def _print_case_log(engine: str, case, status: str, latency_ms, row_count, query: str, error_type="", progress=None):
+    detail = _case_label(case, status, latency_ms, row_count, error_type)
+    question = case.get("nl_question") or "<missing>"
+    if getattr(progress, "is_tty", False):
+        print(flush=True)
+    print(f"[{engine}] {detail} question={_compact_query(question)}", flush=True)
+
+
+def run_rdb_eval(cases, db_path: Path, verbose_cases=False):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     results = []
+    progress = ProgressBar(total=len(cases), label="RDB评测", unit="case")
 
     try:
         for case in cases:
             query = (case.get("sql_query") or "").strip()
             if not is_executable_query(query):
-                results.append(
-                    {
-                        "id": case["id"],
-                        "task_type": case.get("task_type", ""),
-                        "engine": "rdb",
-                        "success": 0,
-                        "latency_ms": 0.0,
-                        "row_count": 0,
-                        "error_type": "not_executable",
-                        "result_preview": "",
-                        "result_preview_cn": "",
-                    }
-                )
+                result_row = {
+                    "id": case["id"],
+                    "task_type": case.get("task_type", ""),
+                    "engine": "rdb",
+                    "success": 0,
+                    "latency_ms": 0.0,
+                    "row_count": 0,
+                    "error_type": "not_executable",
+                    "result_preview": "",
+                    "result_preview_cn": "",
+                }
+                results.append(result_row)
+                detail = _case_label(case, "skip", 0.0, 0, "not_executable")
+                progress.update(detail=detail, force=verbose_cases)
+                if verbose_cases:
+                    _print_case_log("RDB", case, "skip", 0.0, 0, query, "not_executable", progress)
                 continue
 
             start = time.perf_counter()
@@ -210,42 +245,51 @@ def run_rdb_eval(cases, db_path: Path):
                 latency_ms = round((time.perf_counter() - start) * 1000, 3)
                 preview = [dict(r) for r in rows[:5]]
                 preview_cn = _preview_to_cn(preview)
-                results.append(
-                    {
-                        "id": case["id"],
-                        "task_type": case.get("task_type", ""),
-                        "engine": "rdb",
-                        "success": 1,
-                        "latency_ms": latency_ms,
-                        "row_count": len(rows),
-                        "error_type": "",
-                        "result_preview": json.dumps(preview, ensure_ascii=False),
-                        "result_preview_cn": json.dumps(preview_cn, ensure_ascii=False),
-                    }
-                )
+                result_row = {
+                    "id": case["id"],
+                    "task_type": case.get("task_type", ""),
+                    "engine": "rdb",
+                    "success": 1,
+                    "latency_ms": latency_ms,
+                    "row_count": len(rows),
+                    "error_type": "",
+                    "result_preview": json.dumps(preview, ensure_ascii=False),
+                    "result_preview_cn": json.dumps(preview_cn, ensure_ascii=False),
+                }
+                results.append(result_row)
+                detail = _case_label(case, "ok", latency_ms, len(rows))
+                progress.update(detail=detail, force=verbose_cases)
+                if verbose_cases:
+                    _print_case_log("RDB", case, "ok", latency_ms, len(rows), query, progress=progress)
             except Exception as e:
                 latency_ms = round((time.perf_counter() - start) * 1000, 3)
-                results.append(
-                    {
-                        "id": case["id"],
-                        "task_type": case.get("task_type", ""),
-                        "engine": "rdb",
-                        "success": 0,
-                        "latency_ms": latency_ms,
-                        "row_count": 0,
-                        "error_type": type(e).__name__,
-                        "result_preview": str(e)[:500],
-                        "result_preview_cn": "",
-                    }
-                )
+                error_type = type(e).__name__
+                result_row = {
+                    "id": case["id"],
+                    "task_type": case.get("task_type", ""),
+                    "engine": "rdb",
+                    "success": 0,
+                    "latency_ms": latency_ms,
+                    "row_count": 0,
+                    "error_type": error_type,
+                    "result_preview": str(e)[:500],
+                    "result_preview_cn": "",
+                }
+                results.append(result_row)
+                detail = _case_label(case, "error", latency_ms, 0, error_type)
+                progress.update(detail=detail, force=verbose_cases)
+                if verbose_cases:
+                    _print_case_log("RDB", case, "error", latency_ms, 0, query, error_type, progress)
     finally:
+        progress.close()
         conn.close()
 
     return results
 
 
-def run_kg_eval_neo4j(cases, auth_data: dict):
+def run_kg_eval_neo4j(cases, auth_data: dict, verbose_cases=False):
     results = []
+    progress = ProgressBar(total=len(cases), label="KG评测", unit="case")
 
     driver = GraphDatabase.driver(
         auth_data["uri"],
@@ -256,35 +300,41 @@ def run_kg_eval_neo4j(cases, auth_data: dict):
             for case in cases:
                 query = (case.get("sparql_or_graph_query") or "").strip()
                 if not is_executable_query(query):
-                    results.append(
-                        {
-                            "id": case["id"],
-                            "task_type": case.get("task_type", ""),
-                            "engine": "kg",
-                            "success": 0,
-                            "latency_ms": 0.0,
-                            "row_count": 0,
-                            "error_type": "not_executable",
-                            "result_preview": "",
-                            "result_preview_cn": "",
-                        }
-                    )
+                    result_row = {
+                        "id": case["id"],
+                        "task_type": case.get("task_type", ""),
+                        "engine": "kg",
+                        "success": 0,
+                        "latency_ms": 0.0,
+                        "row_count": 0,
+                        "error_type": "not_executable",
+                        "result_preview": "",
+                        "result_preview_cn": "",
+                    }
+                    results.append(result_row)
+                    detail = _case_label(case, "skip", 0.0, 0, "not_executable")
+                    progress.update(detail=detail, force=verbose_cases)
+                    if verbose_cases:
+                        _print_case_log("KG", case, "skip", 0.0, 0, query, "not_executable", progress)
                     continue
 
-                if re.search(r"PREFIX\\s|SELECT\\s+\\?", query, flags=re.IGNORECASE):
-                    results.append(
-                        {
-                            "id": case["id"],
-                            "task_type": case.get("task_type", ""),
-                            "engine": "kg",
-                            "success": 0,
-                            "latency_ms": 0.0,
-                            "row_count": 0,
-                            "error_type": "not_cypher_query",
-                            "result_preview": "当前 KG 路径已改为 Neo4j/Cypher，请将题库中的 KG 查询改为 Cypher。",
-                            "result_preview_cn": "当前 KG 路径已改为 Neo4j/Cypher，请将题库中的 KG 查询改为 Cypher。",
-                        }
-                    )
+                if re.search(r"PREFIX\s|SELECT\s+\?", query, flags=re.IGNORECASE):
+                    result_row = {
+                        "id": case["id"],
+                        "task_type": case.get("task_type", ""),
+                        "engine": "kg",
+                        "success": 0,
+                        "latency_ms": 0.0,
+                        "row_count": 0,
+                        "error_type": "not_cypher_query",
+                        "result_preview": "当前 KG 路径已改为 Neo4j/Cypher，请将题库中的 KG 查询改为 Cypher。",
+                        "result_preview_cn": "当前 KG 路径已改为 Neo4j/Cypher，请将题库中的 KG 查询改为 Cypher。",
+                    }
+                    results.append(result_row)
+                    detail = _case_label(case, "skip", 0.0, 0, "not_cypher_query")
+                    progress.update(detail=detail, force=verbose_cases)
+                    if verbose_cases:
+                        _print_case_log("KG", case, "skip", 0.0, 0, query, "not_cypher_query", progress)
                     continue
 
                 start = time.perf_counter()
@@ -300,35 +350,43 @@ def run_kg_eval_neo4j(cases, auth_data: dict):
                         latency_ms = round((time.perf_counter() - start) * 1000, 3)
                     preview = records[:5]
                     preview_cn = _preview_to_cn(preview)
-                    results.append(
-                        {
-                            "id": case["id"],
-                            "task_type": case.get("task_type", ""),
-                            "engine": "kg",
-                            "success": 1,
-                            "latency_ms": latency_ms,
-                            "row_count": len(records),
-                            "error_type": "",
-                            "result_preview": json.dumps(preview, ensure_ascii=False),
-                            "result_preview_cn": json.dumps(preview_cn, ensure_ascii=False),
-                        }
-                    )
+                    result_row = {
+                        "id": case["id"],
+                        "task_type": case.get("task_type", ""),
+                        "engine": "kg",
+                        "success": 1,
+                        "latency_ms": latency_ms,
+                        "row_count": len(records),
+                        "error_type": "",
+                        "result_preview": json.dumps(preview, ensure_ascii=False),
+                        "result_preview_cn": json.dumps(preview_cn, ensure_ascii=False),
+                    }
+                    results.append(result_row)
+                    detail = _case_label(case, "ok", latency_ms, len(records))
+                    progress.update(detail=detail, force=verbose_cases)
+                    if verbose_cases:
+                        _print_case_log("KG", case, "ok", latency_ms, len(records), query, progress=progress)
                 except Exception as e:
                     latency_ms = round((time.perf_counter() - start) * 1000, 3)
-                    results.append(
-                        {
-                            "id": case["id"],
-                            "task_type": case.get("task_type", ""),
-                            "engine": "kg",
-                            "success": 0,
-                            "latency_ms": latency_ms,
-                            "row_count": 0,
-                            "error_type": type(e).__name__,
-                            "result_preview": str(e)[:500],
-                            "result_preview_cn": "",
-                        }
-                    )
+                    error_type = type(e).__name__
+                    result_row = {
+                        "id": case["id"],
+                        "task_type": case.get("task_type", ""),
+                        "engine": "kg",
+                        "success": 0,
+                        "latency_ms": latency_ms,
+                        "row_count": 0,
+                        "error_type": error_type,
+                        "result_preview": str(e)[:500],
+                        "result_preview_cn": "",
+                    }
+                    results.append(result_row)
+                    detail = _case_label(case, "error", latency_ms, 0, error_type)
+                    progress.update(detail=detail, force=verbose_cases)
+                    if verbose_cases:
+                        _print_case_log("KG", case, "error", latency_ms, 0, query, error_type, progress)
     finally:
+        progress.close()
         driver.close()
 
     return results
@@ -416,6 +474,11 @@ def main():
         default=Path("data/eval"),
         help="Output directory.",
     )
+    parser.add_argument(
+        "--verbose-cases",
+        action="store_true",
+        help="Print one detailed log line for each evaluated case.",
+    )
     args = parser.parse_args()
 
     cases = load_cases(args.question_bank)
@@ -425,7 +488,7 @@ def main():
     kg_rows = []
 
     if args.engine in ("rdb", "both"):
-        rdb_rows = run_rdb_eval(cases, args.db_path)
+        rdb_rows = run_rdb_eval(cases, args.db_path, verbose_cases=args.verbose_cases)
         write_csv(
             args.out_dir / "eval_rdb_results.csv",
             rdb_rows,
@@ -443,7 +506,7 @@ def main():
         if not all(auth_data.values()):
             raise ValueError("Neo4j 连接信息不完整，请检查参数或环境变量。")
 
-        kg_rows = run_kg_eval_neo4j(cases, auth_data)
+        kg_rows = run_kg_eval_neo4j(cases, auth_data, verbose_cases=args.verbose_cases)
         write_csv(
             args.out_dir / "eval_kg_results.csv",
             kg_rows,

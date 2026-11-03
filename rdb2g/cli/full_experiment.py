@@ -4,8 +4,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from rdb2g.neo4j.importer import import_ttl_to_neo4j
 from rdb2g.pipeline.ttl_builder import build_ttl
+
+
+load_dotenv()
 
 
 def run_eval(
